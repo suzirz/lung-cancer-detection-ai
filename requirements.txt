@@ -25,3 +25,6 @@ kagglehub>=0.2.0
 
 # Web Application Demo
 streamlit>=1.30.0
+
+# Testing & Verification
+pytest>=7.0.0
