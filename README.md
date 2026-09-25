@@ -14,6 +14,22 @@ PulmoScan provides an end-to-end computer vision and explainable AI pipeline for
 
 ---
 
+## Problem Context: Why This Matters
+
+Lung cancer kills more Indonesians than any other cancer. The numbers are specific and severe:
+
+- **38,000+ new cases per year** — more than 100 new diagnoses every day across the archipelago.
+- **70–90% of patients are diagnosed at Stage III or IV**, when the 5-year survival rate drops below 10%. Early-stage lung cancer (Stage I) has a 5-year survival rate above 70%, but most patients never get caught early.
+- **Indonesia has ~1.2 radiologists per 100,000 people**. Specialists and CT scanners are concentrated in Jakarta, Surabaya, and a handful of major cities. Patients in Kalimantan, Sulawesi, Papua, and rural Java often travel hundreds of kilometers for a scan — if they get one at all.
+- **No national screening program exists.** Low-dose CT screening (the global gold standard for high-risk smokers) is not covered by JKN (national health insurance) and is only available at select private hospitals.
+- **Diagnostic confusion with TB.** Chronic cough and chest pain — the most common early lung cancer symptoms — are routinely attributed to tuberculosis or COPD in primary care, delaying referral by months.
+
+The gap is not just a shortage of scanners. It is a shortage of trained eyes to read the scans. A computer-aided triage tool that flags suspicious nodules and shows the radiologist *where* and *why* it flagged them does not replace the doctor — it extends their reach to the district hospitals and Puskesmas that currently have no specialist coverage.
+
+PulmoScan is a prototype exploring whether a lightweight model (4M parameters, runs on a laptop CPU in ~150ms) can perform this triage function with sufficient accuracy to be worth validating further.
+
+---
+
 ## Technical Status: Trained Weights vs. Pipeline Components
 
 | Component | Category | Current Status | Description |
@@ -100,6 +116,22 @@ Splits are performed at the **patient/scan group level** (70/15/15 ratio applied
    - Random horizontal flips ($p = 0.5$) and vertical flips ($p = 0.3$).
    - Random rotations ($\pm 15^\circ$) to simulate patient positioning variation in scanner gantries.
    - Micro color jitter (brightness 0.1, contrast 0.1) simulating tube current and mAs differences.
+
+---
+
+## Design Rationale: Why Hybrid CNN + Tree Classifiers
+
+A reasonable question: why not just train a CNN end-to-end and call it done?
+
+Three concrete reasons drove the hybrid architecture:
+
+**1. Clinical recall matters more than accuracy.** In lung cancer screening, a missed malignant nodule (false negative) has catastrophic consequences — the patient walks away thinking they're healthy. A CNN's softmax layer optimizes for overall accuracy, which can sacrifice recall on the minority class. Random Forest and XGBoost classifiers support native `class_weight="balanced"` and `scale_pos_weight`, letting us explicitly push the decision boundary toward higher malignant recall even at the cost of some false positives. Published benchmarks on similar CT datasets report 3–5% recall improvement on malignant cases when switching from CNN-softmax to CNN-embedding + tree classifier.
+
+**2. Radiomics captures what CNNs learn to ignore.** CNNs excel at learning hierarchical visual features, but they tend to compress low-level statistics (mean intensity, entropy, edge sharpness) into abstract representations that are hard to audit. Radiomics features — first-order intensity moments, Shannon entropy, Laplacian variance, Sobel gradient statistics — are interpretable, clinically meaningful, and provide a complementary signal channel. Concatenating 1,280-dim CNN embeddings with 13 radiomics features gives the tree classifiers information from both abstract pattern recognition and quantitative tissue characterization.
+
+**3. Explainability is not optional in medical AI.** Indonesian radiologists and competition judges cannot accept a model that says "malignant" without showing its reasoning. Grad-CAM provides spatial attribution ("the model focused on this region"), while radiomics provides quantitative attribution ("the Laplacian variance of this region is 2.3x higher than normal tissue"). Together, they give a doctor two independent verification channels — one visual, one numerical.
+
+The hybrid approach is not novel. It follows established methodology from published literature on CT-based lung nodule classification. The contribution here is the integrated pipeline: one command trains the CNN, extracts embeddings, trains the tree classifiers, generates Grad-CAM visualizations, and produces a deployable web demo.
 
 ---
 
