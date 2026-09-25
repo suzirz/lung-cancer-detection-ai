@@ -227,6 +227,66 @@ python -m pytest tests/ -v
 
 ---
 
+## Reproducibility
+
+All training runs are deterministic at the framework level:
+
+| Factor | Setting |
+|---|---|
+| **Random seed** | 42 (fixed across NumPy, PyTorch, sklearn) |
+| **Data split** | Group-aware stratified, persisted as JSON (`data/splits/`) |
+| **Model weights** | Deterministic initialization from `torchvision` pretrained ImageNet checkpoint |
+| **Hardware target** | NVIDIA Tesla T4 (16 GB VRAM), Google Colab |
+| **Precision** | FP16 Mixed Precision via `torch.cuda.amp` |
+
+To reproduce from scratch: open the [Colab notebook](https://colab.research.google.com/github/suzirz/lung-cancer-detection-ai/blob/main/notebooks/train_colab_t4.ipynb), select T4 GPU runtime, and run all cells. The pipeline downloads data, splits, trains, and evaluates without manual intervention.
+
+**Caveat on exact reproducibility**: PyTorch does not guarantee bitwise-identical results across GPU architectures or CUDA versions, even with fixed seeds. Metrics may vary by ±0.5% on different hardware. The split files (`data/splits/*.json`) are the canonical reference — as long as the same splits are used, model comparisons remain valid.
+
+---
+
+## Known Limitations
+
+This section documents what PulmoScan **cannot** do and where it will fail. These are not future roadmap items — they are structural constraints of the current design and dataset.
+
+### 1. Single-Source Dataset
+
+All training and evaluation data comes from one institution (Iraq-Oncology Teaching Hospital / National Center for Cancer Diseases). The model has never seen CT scans from any other hospital, scanner, or patient population. Performance on scans from Siemens, GE, Philips, or Toshiba scanners at other institutions is unknown and likely degraded.
+
+### 2. No Scanner or Reconstruction Kernel Normalization
+
+CT scan appearance varies significantly based on:
+- **Slice thickness**: The dataset uses a single slice thickness. Models trained on 1mm thin-slice scans perform poorly on 5mm thick-slice scans (and vice versa), because nodule visibility and texture change dramatically.
+- **Reconstruction kernel**: Lung kernel (sharp, high-frequency) vs. soft tissue kernel (smooth, low-frequency) produce visually different images of the same anatomy. PulmoScan does not detect or normalize for kernel type.
+- **Scanner manufacturer and model**: Each vendor's detector geometry, tube voltage defaults, and post-processing pipelines produce subtly different image characteristics.
+
+The preprocessing pipeline applies only resize + ImageNet normalization. It does not perform HU windowing, kernel harmonization, or slice thickness resampling.
+
+### 3. 2D Slices, Not 3D Volumes
+
+PulmoScan classifies individual 2D axial slices, not 3D CT volumes. In clinical radiology, a nodule's 3D morphology (volume doubling time, spiculation pattern across slices, relationship to bronchi/vessels) carries critical diagnostic information that single-slice analysis misses entirely.
+
+### 4. Augmentation-Inflated Dataset
+
+The 12,184 images originate from approximately 1,000 unique scans, each augmented ~10x offline. This means:
+- The effective training diversity is ~1,000 patients, not 12,184.
+- The model's exposure to anatomical variation is limited to whatever variation existed in the original ~1,000 scans.
+- The group-aware split prevents leakage, but does not increase real sample diversity.
+
+### 5. No DICOM Metadata
+
+The dataset provides JPEG images stripped of DICOM headers. PulmoScan has no access to patient age, sex, scan parameters, slice position, or clinical history — all of which inform real diagnostic decisions.
+
+### 6. Three-Class Simplification
+
+Real pulmonary nodule classification involves a spectrum: pure ground-glass opacity (GGO), part-solid, solid, calcified, cavitary, with sub-classifications by size (< 6mm, 6–8mm, > 8mm) following Fleischner Society guidelines. PulmoScan reduces this to three coarse categories (Benign / Malignant / Normal), which does not reflect clinical practice.
+
+### 7. No Multi-Center Validation
+
+The model has not been evaluated on external datasets (LIDC-IDRI, LUNA16, NLST). Until cross-institutional validation is performed, reported metrics apply only to IQ-OTHNCCD data and should not be extrapolated to other populations or imaging protocols.
+
+---
+
 ## License
 
 This project is distributed under the [MIT License](LICENSE).
