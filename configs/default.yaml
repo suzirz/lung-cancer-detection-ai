@@ -1,0 +1,44 @@
+# General & Reproducibility
+seed: 42
+project_name: "lung-cancer-detection-ai"
+
+# Dataset Configurations
+data:
+  raw_dir: "data/raw/The IQ-OTHNCCD Lung Cancer Augmented Dataset"
+  processed_dir: "data/processed"
+  splits_dir: "data/splits"
+  classes:
+    - "Benign cases"
+    - "Malignant cases"
+    - "Normal cases"
+  image_size: [224, 224] # [H, W] target for EfficientNet/ResNet
+  num_classes: 3
+
+# Compute & Hardware (Target: Google Cloud Tesla T4 16GB)
+compute:
+  device: "cuda"            # automatically falls back to cpu if cuda unavailable
+  mixed_precision: true     # FP16 autocast for NVIDIA Tensor Cores
+  num_workers: 4
+  pin_memory: true
+
+# Baseline CNN Feature Extractor
+cnn:
+  backbone: "efficientnet_b0" # alternatives: resnet50, efficientnet_b2
+  pretrained: true
+  freeze_backbone: false
+  batch_size: 32
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  epochs: 15
+  optimizer: "adamw"
+
+# Hybrid Classifier (ML Stage)
+hybrid:
+  classifier: "random_forest" # options: random_forest, xgboost
+  n_estimators: 200
+  max_depth: 10
+  class_weight: "balanced"
+
+# Explainability
+explainability:
+  target_layer: "features.8" # target convolutional layer for Grad-CAM
