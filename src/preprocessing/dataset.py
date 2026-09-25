@@ -39,7 +39,8 @@ class LungCTDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        img_path, label = self.samples[idx]
+        raw_path, label = self.samples[idx]
+        img_path = os.path.normpath(raw_path)
         with Image.open(img_path) as img:
             image = img.convert("RGB")
 
