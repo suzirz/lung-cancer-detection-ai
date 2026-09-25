@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Tests](https://img.shields.io/badge/Tests-23%20Passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/Tests-29%20Passing-brightgreen.svg)
 
 > [!WARNING]
 > **RESEARCH & EDUCATIONAL PROTOTYPE · NOT FOR CLINICAL USE**
@@ -28,28 +28,36 @@ PulmoScan provides an end-to-end computer vision and explainable AI pipeline for
 
 ---
 
-## Empirical Benchmark (1,828 Held-Out Test Scans)
+## Empirical Benchmark (Group-Aware Splits, Held-Out Test Set)
 
-Empirical evaluation results on the held-out test cohort (1,828 independent CT scans, strictly isolated before training):
+> **⚠️ METRICS PENDING RE-TRAINING**
+> The results below will be updated after re-training with group-aware splits. Previous metrics (100% across all classes) were invalid due to data leakage — see [Methodological Note](#methodological-note-data-leakage-correction) below.
 
 | Model Architecture | Task | Test Samples | Accuracy | Macro Precision | Macro Recall | Macro F1 | Latency (CPU) |
 |---|---|---|---|---|---|---|---|
-| **EfficientNet-B0 (CNN)** | 3-Class End-to-End | 1,828 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | ~150 ms |
-| **Hybrid: CNN + XGBoost** | Embedding Classifier | 1,828 | **99.94%** | 99.95% | 99.93% | 99.94% | ~165 ms |
-| **Hybrid: CNN + Random Forest** | Embedding Classifier | 1,828 | **99.89%** | 99.88% | 99.89% | 99.89% | ~160 ms |
-
-### Confusion Matrix Breakdown (EfficientNet-B0, 1,828 Held-Out Test Cases):
-- **Benign Cases (468 scans)**: 468 True Positives, 0 misclassified as Malignant, 0 as Normal.
-- **Malignant Cases (673 scans)**: 673 True Positives, 0 misclassified as Benign, 0 as Normal.
-- **Normal Parenchyma (687 scans)**: 687 True Negatives, 0 misclassified as Benign, 0 as Malignant.
-
-> **Clinical Reality Check**: Zero false negatives were observed on this augmented benchmark test set. While these metrics confirm model convergence and high separability on the IQ-OTHNCCD dataset, real clinical deployment faces domain shifts across slice thicknesses (1 mm thin-slice vs 5 mm thick-slice), reconstruction kernels (bone vs lung window), and scanner manufacturers (Siemens, GE, Philips). Cross-institutional validation on datasets like LIDC-IDRI is required before clinical use.
+| **EfficientNet-B0 (CNN)** | 3-Class End-to-End | TBD | TBD | TBD | TBD | TBD | ~150 ms |
+| **Hybrid: CNN + XGBoost** | Embedding Classifier | TBD | TBD | TBD | TBD | TBD | ~165 ms |
+| **Hybrid: CNN + Random Forest** | Embedding Classifier | TBD | TBD | TBD | TBD | TBD | ~160 ms |
 
 ![Confusion Matrix](reports/baseline_confusion_matrix.png)
 
 ![Multi-Class One-vs-Rest ROC Curves](reports/roc_auc_curve.png)
 
 ![Model Comparison Benchmark](reports/model_comparison.png)
+
+---
+
+## Methodological Note: Data Leakage Correction
+
+The IQ-OTHNCCD Augmented Dataset contains 12,184 images generated from approximately 1,000 original patient CT scans through offline augmentation (rotation, flipping, brightness adjustment). Each original scan has roughly 10 augmented variants named with the pattern `{Class} case ({patient_id})({augmentation_id}).jpg`.
+
+**Problem identified**: The initial pipeline split data per-image using `sklearn.train_test_split`, treating each augmented variant as an independent sample. This scattered near-identical images from the same patient across train, validation, and test sets. Quantified overlap:
+- 830 patient groups appeared in both training and test splits
+- 843 patient groups appeared in both training and validation splits
+
+This leakage allowed the model to "recognize" augmented twins during evaluation, producing artificially perfect metrics.
+
+**Fix applied** ([`split.py`](src/preprocessing/split.py)): Splitting now operates at the **patient/scan group level** using `extract_group_id()` to parse filenames and group all augmented variants of the same scan together. All variants of one scan are assigned to exactly one split partition (train, val, OR test — never across splits). Zero cross-split group overlap is verified by assertion at split time and by automated tests (`tests/test_preprocessing.py`).
 
 ---
 
@@ -76,17 +84,19 @@ $$L_{\text{Grad-CAM}}^c = \text{ReLU}\left(\sum_k \alpha_k^c A^k\right)$$
 
 The system is trained and evaluated on the augmented IQ-OTHNCCD lung cancer CT dataset:
 
-| Diagnostic Class | Training Set (70%) | Validation Set (15%) | Testing Set (15%) | Total Scans |
-|---|---|---|---|---|
-| **Benign Cases** | 2,184 | 468 | 468 | **3,120 scans** |
-| **Malignant Cases** | 3,142 | 673 | 673 | **4,488 scans** |
-| **Normal Parenchyma** | 3,202 | 687 | 687 | **4,576 scans** |
-| **Total Cohort** | **8,528 scans** | **1,828 scans** | **1,828 scans** | **12,184 scans** |
+| Diagnostic Class | Total Scans | Source |
+|---|---|---|
+| **Benign Cases** | **3,120** | IQ-OTH/NCCD (augmented) |
+| **Malignant Cases** | **4,488** | IQ-OTH/NCCD (augmented) |
+| **Normal Parenchyma** | **4,576** | IQ-OTH/NCCD (augmented) |
+| **Total Cohort** | **12,184** | ~1,000 original scans × ~10 augmentations |
+
+Splits are performed at the **patient/scan group level** (70/15/15 ratio applied to groups, not individual images). Exact image counts per split depend on the number of augmentation variants per patient.
 
 ### Data Pipeline & Preprocessing Protocol:
 1. **Resolution & Normalization**: Slices are rescaled to 224x224 pixels and normalized to ImageNet statistics ($\mu = [0.485, 0.456, 0.406]$, $\sigma = [0.229, 0.224, 0.225]$).
-2. **Data Leakage Prevention**: Stratified splitting (`data/splits/*.json`) was performed with fixed random seed (42) prior to any training or feature extraction.
-3. **Clinical Domain Augmentation**:
+2. **Data Leakage Prevention**: Group-aware stratified splitting (`src/preprocessing/split.py`) ensures all augmented variants of a single patient scan remain in the same partition. Zero cross-split patient overlap is verified by automated test and runtime assertion.
+3. **Clinical Domain Augmentation** (applied at training time only):
    - Random horizontal flips ($p = 0.5$) and vertical flips ($p = 0.3$).
    - Random rotations ($\pm 15^\circ$) to simulate patient positioning variation in scanner gantries.
    - Micro color jitter (brightness 0.1, contrast 0.1) simulating tube current and mAs differences.
@@ -201,14 +211,14 @@ lung-cancer-detection-ai/
 
 ## Verification & Testing Suite
 
-All modules are covered by 23 automated unit and integration tests:
+All modules are covered by 29 automated unit and integration tests:
 
 ```bash
 python -m pytest tests/ -v
 ```
 
 ### Test Coverage Summary:
-- **Preprocessing (`test_preprocessing.py`)**: Split ratios, stratifications, and DataLoader batches.
+- **Preprocessing (`test_preprocessing.py`)**: Group ID extraction, group-aware split ratios, zero cross-split patient overlap verification, augmentation integrity (all variants stay together), real split leakage detection, and DataLoader batches.
 - **CNN Architecture & Metrics (`test_model_and_metrics.py`)**: Forward pass, feature dimension (1,280), medical recall calculation, confusion matrix.
 - **Hybrid Modeling (`test_hybrid.py`)**: Random Forest training, XGBoost training, evaluation export.
 - **Explainability & Audits (`test_explainability_and_final_eval.py`)**: Grad-CAM heatmap bounds $[0, 1]$, alpha blending, multi-class ROC-AUC, 5-fold cross-validation.

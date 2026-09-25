@@ -9,12 +9,37 @@ Prinsip Codebase Design:
 """
 
 import os
+import re
 import glob
 from typing import Dict, List, Tuple, Optional
 from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+
+
+def extract_group_id(filepath: str) -> str:
+    """
+    Extract the patient/scan-level group ID from an IQ-OTHNCCD augmented dataset filename.
+
+    The augmented dataset follows the naming pattern:
+        '{Class} case ({patient_id})({augmentation_id}).jpg'
+    Example:
+        'Malignant case (445)(6).jpg' -> 'Malignant case_445'
+        'Normal case (84)(1).jpg'     -> 'Normal case_84'
+
+    All augmented variants of the same original scan share the same group ID.
+    This is critical for group-aware splitting to prevent data leakage.
+
+    Falls back to the full basename if the pattern does not match (e.g., non-standard filenames).
+    """
+    basename = os.path.basename(filepath)
+    match = re.match(r"^([\w\s]+?)\s*\((\d+)\)\s*\(\d+\)", basename)
+    if match:
+        class_prefix = match.group(1).strip()
+        patient_num = match.group(2)
+        return f"{class_prefix}_{patient_num}"
+    return basename
 
 
 class LungCTDataset(Dataset):

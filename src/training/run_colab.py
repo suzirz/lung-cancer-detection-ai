@@ -60,24 +60,39 @@ def run_pipeline():
     else:
         print(f"[OK] Dataset sudah tersedia di: {dataset_dir}")
 
-    # 3. Cek & Jalankan Split Data
-    splits_summary = "data/splits/split_summary.json"
-    if not os.path.exists(splits_summary):
-        print("\n" + "="*50)
-        print("3. MEMBAGI DATASET (STRATIFIED TRAIN / VAL / TEST)")
-        print("="*50)
+    # 3. Split Data (Group-Aware — prevents augmentation leakage)
+    print("\n" + "="*50)
+    print("3. MEMBAGI DATASET (GROUP-AWARE STRATIFIED SPLIT)")
+    print("="*50)
+    splits_dir = "data/splits"
+    splits_summary = os.path.join(splits_dir, "split_summary.json")
+
+    # Check if existing splits use the old per-image method (leaky)
+    force_resplit = False
+    if os.path.exists(splits_summary):
+        import json
+        with open(splits_summary, "r", encoding="utf-8") as f:
+            existing_summary = json.load(f)
+        if existing_summary.get("split_method") != "group_aware_stratified":
+            print("[!] Stale per-image splits detected — regenerating with group-aware method...")
+            force_resplit = True
+            # Remove old split artifacts
+            import shutil
+            shutil.rmtree(splits_dir, ignore_errors=True)
+
+    if force_resplit or not os.path.exists(splits_summary):
         from src.preprocessing.split import split_and_save
         with open("configs/default.yaml", "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+            cfg_split = yaml.safe_load(f)
         split_and_save(
-            data_dir=cfg["data"]["raw_dir"],
-            output_dir=cfg["data"]["splits_dir"],
+            data_dir=cfg_split["data"]["raw_dir"],
+            output_dir=cfg_split["data"]["splits_dir"],
             val_ratio=0.15,
             test_ratio=0.15,
-            seed=cfg.get("seed", 42)
+            seed=cfg_split.get("seed", 42)
         )
     else:
-        print(f"[OK] Metadata split sudah ada di: {splits_summary}")
+        print(f"[OK] Group-aware splits already exist at: {splits_summary}")
 
     # 4. Eksekusi Training Model
     print("\n" + "="*50)

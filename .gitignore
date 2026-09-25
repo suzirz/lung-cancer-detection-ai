@@ -1,0 +1,27 @@
+# Environment & Data
+.env
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Dataset (exclude raw and large processed images from git)
+data/raw/
+data/processed/
+data/splits/*.npy
+
+# Large Model Weights (>50MB)
+models/*.h5
+models/*.pth
+models/*.pt
+models/*.pkl
+models/*.bin
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
