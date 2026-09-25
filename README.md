@@ -12,6 +12,8 @@
 
 PulmoScan provides an end-to-end computer vision and explainable AI pipeline for classifying pulmonary nodules on chest computed tomography (CT) scans into three diagnostic categories: **Normal parenchyma**, **Benign nodule**, and **Malignant neoplasm**. The system combines transfer-learned convolutional neural networks (EfficientNet-B0), quantitative intensity/gradient radiomics, tree-based tabular classifiers (Random Forest & XGBoost), and gradient-weighted class activation mapping (Grad-CAM).
 
+![PulmoScan Architecture](reports/architecture_diagram.jpg)
+
 ---
 
 ## Problem Context: Why This Matters
@@ -75,6 +77,10 @@ Evaluation on the held-out test cohort (1,913 CT scans, zero patient overlap wit
 
 ![Model Comparison Benchmark](reports/model_comparison.png)
 
+### Training Convergence (15 Epochs, Tesla T4 FP16):
+
+![Training Curves](reports/training_curves.png)
+
 ---
 
 ## Methodological Note: Data Leakage Correction
@@ -122,6 +128,10 @@ The system is trained and evaluated on the augmented IQ-OTHNCCD lung cancer CT d
 | **Total Cohort** | **12,184** | ~1,000 original scans × ~10 augmentations |
 
 Splits are performed at the **patient/scan group level** (70/15/15 ratio applied to groups, not individual images). Exact image counts per split depend on the number of augmentation variants per patient.
+
+![Class Distribution](reports/eda/class_distribution.png)
+
+![Sample CT Scan Images](reports/eda/sample_images.png)
 
 ### Data Pipeline & Preprocessing Protocol:
 1. **Resolution & Normalization**: Slices are rescaled to 224x224 pixels and normalized to ImageNet statistics ($\mu = [0.485, 0.456, 0.406]$, $\sigma = [0.229, 0.224, 0.225]$).
