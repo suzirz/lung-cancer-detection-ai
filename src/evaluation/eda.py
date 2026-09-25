@@ -78,16 +78,17 @@ def generate_eda_report(data_dir: str, output_dir: str = "reports/eda") -> None:
         print(f" - {cls_name:<20}: {count:>6,} ({pct:.2f}%)")
     print("="*50)
 
-    # 1. Bar Chart Distribusi Kelas
-    plt.figure(figsize=(8, 5))
+    # 1. Bar Chart Class Distribution
+    plt.figure(figsize=(8, 5), dpi=150)
     classes = list(counts.keys())
     values = list(counts.values())
     colors = ["#2b8a3e", "#e03131", "#1971c2"][:len(classes)]
+    display_classes = [c.replace("cases", "Cases").strip() for c in classes]
     
-    bars = plt.bar(classes, values, color=colors, edgecolor="black", alpha=0.85)
-    plt.title("Distribusi Kelas Dataset CT Scan Paru", fontsize=14, fontweight="bold", pad=15)
-    plt.xlabel("Kategori Diagnosa", fontsize=12)
-    plt.ylabel("Jumlah Citra", fontsize=12)
+    bars = plt.bar(display_classes, values, color=colors, edgecolor="black", alpha=0.85)
+    plt.title("Class Distribution — IQ-OTHNCCD Lung CT Dataset", fontsize=13, fontweight="bold", pad=15)
+    plt.xlabel("Diagnostic Category", fontsize=11, fontweight="bold", labelpad=8)
+    plt.ylabel("Number of Scans", fontsize=11, fontweight="bold", labelpad=8)
     plt.grid(axis="y", linestyle="--", alpha=0.6)
     
     for bar in bars:
@@ -99,7 +100,7 @@ def generate_eda_report(data_dir: str, output_dir: str = "reports/eda") -> None:
     chart_path = os.path.join(output_dir, "class_distribution.png")
     plt.savefig(chart_path, dpi=300)
     plt.close()
-    print(f"[OK] Grafik distribusi disimpan ke: {chart_path}")
+    print(f"[OK] Distribution chart saved to: {chart_path}")
 
     # 2. Visualisasi Sampel Citra
     fig, axes = plt.subplots(len(classes), 3, figsize=(10, 3 * len(classes)))

@@ -7,8 +7,15 @@
   "seed": 42,
   "total_samples": 12184,
   "split_counts": {
-    "train": 8528,
-    "val": 1828,
-    "test": 1828
-  }
+    "train": 8607,
+    "val": 1817,
+    "test": 1760
+  },
+  "group_counts": {
+    "train": 1536,
+    "val": 329,
+    "test": 329
+  },
+  "split_method": "group_aware_stratified",
+  "group_key": "patient_scan_id"
 }

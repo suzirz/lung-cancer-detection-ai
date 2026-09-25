@@ -68,5 +68,6 @@ def test_cross_validation_audit():
 
     cv_results = run_cross_validation_audit(X, y, n_splits=3)
     assert "mean_recall_macro" in cv_results
+    assert "mean_f1_macro" in cv_results
     assert "mean_accuracy" in cv_results
     assert cv_results["cv_folds"] == 3

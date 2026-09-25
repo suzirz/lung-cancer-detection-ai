@@ -58,7 +58,7 @@ def compute_roc_auc_multiclass(
     ax.set_ylim([0.0, 1.05])
     ax.set_xlabel("False Positive Rate (1 - Specificity)", fontsize=11)
     ax.set_ylabel("True Positive Rate (Sensitivity / Recall)", fontsize=11)
-    ax.set_title("Kurva Multi-Class ROC-AUC Diagnosa Kanker Paru", fontsize=13, fontweight="bold", pad=12)
+    ax.set_title("Multi-Class ROC-AUC Curves — Lung Cancer Diagnosis", fontsize=13, fontweight="bold", pad=12)
     ax.legend(loc="lower right", fontsize=10)
     ax.grid(alpha=0.4)
 
@@ -76,18 +76,21 @@ def run_cross_validation_audit(
     random_state: int = 42
 ) -> Dict[str, float]:
     """
-    Menjalankan 5-Fold Stratified Cross-Validation untuk membuktikan stabilitas model.
+    Runs Stratified K-Fold Cross-Validation evaluating Macro Recall, Macro F1, and Accuracy.
     """
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     clf = RandomForestClassifier(n_estimators=100, max_depth=10, class_weight="balanced", random_state=random_state, n_jobs=1)
 
     scores_recall = cross_val_score(clf, X, y, cv=cv, scoring="recall_macro", n_jobs=1)
+    scores_f1 = cross_val_score(clf, X, y, cv=cv, scoring="f1_macro", n_jobs=1)
     scores_acc = cross_val_score(clf, X, y, cv=cv, scoring="accuracy", n_jobs=1)
 
     return {
         "cv_folds": n_splits,
         "mean_recall_macro": float(np.mean(scores_recall)),
         "std_recall_macro": float(np.std(scores_recall)),
+        "mean_f1_macro": float(np.mean(scores_f1)),
+        "std_f1_macro": float(np.std(scores_f1)),
         "mean_accuracy": float(np.mean(scores_acc)),
         "std_accuracy": float(np.std(scores_acc)),
     }

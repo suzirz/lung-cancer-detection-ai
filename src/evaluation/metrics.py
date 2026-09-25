@@ -52,10 +52,10 @@ def plot_confusion_matrix(
     y_pred: List[int],
     class_names: List[str],
     output_path: str = "reports/baseline_confusion_matrix.png",
-    title: str = "Confusion Matrix Diagnosa Kanker Paru"
+    title: str = "PulmoScan — Confusion Matrix"
 ) -> np.ndarray:
     """
-    Menghasilkan dan menyimpan visualisasi Confusion Matrix.
+    Generates and saves the Confusion Matrix visualization.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     cm = confusion_matrix(y_true, y_pred)
@@ -70,8 +70,8 @@ def plot_confusion_matrix(
         xticklabels=class_names,
         yticklabels=class_names,
         title=title,
-        ylabel="Ground Truth (Label Asli)",
-        xlabel="Prediksi Model"
+        ylabel="Ground Truth (True Pathological Class)",
+        xlabel="Predicted Class"
     )
 
     plt.setp(ax.get_xticklabels(), rotation=30, ha="right", rotation_mode="anchor")
