@@ -88,6 +88,6 @@ def plot_confusion_matrix(
             )
 
     fig.tight_layout()
-    plt.savefig(output_path, dpi=300)
-    plt.close()
+    plt.savefig(output_path, dpi=100)
+    plt.close(fig)
     return cm
