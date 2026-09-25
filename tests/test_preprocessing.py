@@ -160,14 +160,26 @@ def test_split_summary_integrity():
     assert "group_counts" in summary, "Group counts must be recorded"
 
 
-def test_dataloader_batch_generation():
-    # Ambil 10 sampel nyata dari Train split
+def test_dataloader_batch_generation(tmp_path):
+    # Check if raw files from train split exist on disk
     train_path = "data/splits/train_split.json"
-    if not os.path.exists(train_path):
-        pytest.skip("Train split not found")
+    use_real = False
+    train_samples = []
 
-    with open(train_path, "r", encoding="utf-8") as f:
-        train_samples = json.load(f)[:10]
+    if os.path.exists(train_path):
+        with open(train_path, "r", encoding="utf-8") as f:
+            candidates = json.load(f)[:10]
+        if candidates and os.path.exists(candidates[0][0]):
+            train_samples = candidates
+            use_real = True
+
+    # If raw dataset is not downloaded (e.g. in CI runner), create synthetic images
+    if not use_real:
+        from PIL import Image
+        for i in range(10):
+            img_file = str(tmp_path / f"ci_sample_{i}.jpg")
+            Image.new("RGB", (224, 224), color=(i * 20, i * 20, i * 20)).save(img_file)
+            train_samples.append((img_file, i % 3))
 
     loaders, _ = create_dataloaders(
         train_samples=train_samples,
@@ -175,7 +187,7 @@ def test_dataloader_batch_generation():
         test_samples=train_samples[:2],
         batch_size=4,
         image_size=(224, 224),
-        num_workers=0, # 0 untuk testing lokal cepat
+        num_workers=0,
         pin_memory=False
     )
 
