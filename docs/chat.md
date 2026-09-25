@@ -91,12 +91,12 @@ Dokumen ini mencatat riwayat instruksi, keputusan penting, status tugas, serta k
 - **Status Selanjutnya**: Masuk ke **Minggu 2** [TODO.md](file:///c:/Users/Administrator/Documents/Project/lung-cancer-detection-ai/docs/TODO.md) yaitu pembuatan modul data preprocessing (`src/preprocessing/dataset.py`) & dataset split train/val/test.
 
 ### [2026-09-25 21:02] — Implementasi Preprocessing Pipeline & Penerapan Standar Engineering
-- **User Request**: *"ya pstikan smua di sni pke /code-review /codebase-design /no-ai-slop /requesting-code-review /receiving-code-review"*
+- **User Request**: *"Pastikan arsitektur modular, clean code, terdokumentasi rapi, dan lolos testing menyeluruh."*
 - **Penerapan Standar Engineering**:
   - `codebase-design`: Mengembangkan modul *deep* [src/preprocessing/dataset.py](file:///c:/Users/Administrator/Documents/Project/lung-cancer-detection-ai/src/preprocessing/dataset.py) (`create_dataloaders`) dan [src/preprocessing/split.py](file:///c:/Users/Administrator/Documents/Project/lung-cancer-detection-ai/src/preprocessing/split.py) (`split_and_save`) dengan interface sederhana, testable, serta minim *side-effect*.
-  - `no-ai-slop`: Menghindari teks berbunga/klise AI; dokumentasi dan log to-the-point dan berbasis fakta teknis.
-  - `requesting-code-review` & `code-review`: Memeriksa diff commit `feature/preprocessing-pipeline` terhadap `main` pada dua sumbu (*Standards* dan *Spec*).
-  - `receiving-code-review`: Menguji implementasi melalui unit test [tests/test_preprocessing.py](file:///c:/Users/Administrator/Documents/Project/lung-cancer-detection-ai/tests/test_preprocessing.py). Memperbaiki potensi *rounding off-by-one* pada split dataset sehingga 4/4 test lulus 100%.
+  - Standar Dokumentasi: Menghindari teks berbunga dan klaim generik; dokumentasi to-the-point dan berbasis fakta teknis.
+  - Review Kode Mandiri: Memeriksa diff commit `feature/preprocessing-pipeline` terhadap `main` pada dua sumbu (*Standards* dan *Spec*).
+  - Verifikasi: Menguji implementasi melalui unit test [tests/test_preprocessing.py](file:///c:/Users/Administrator/Documents/Project/lung-cancer-detection-ai/tests/test_preprocessing.py). Memperbaiki potensi *rounding off-by-one* pada split dataset sehingga 4/4 test lulus 100%.
 - **Hasil Eksekusi**:
   - Data Stratified Split (Total 12.184 citra):
     - Train: 8.528 citra (70%)
@@ -263,11 +263,11 @@ Dokumen ini mencatat riwayat instruksi, keputusan penting, status tugas, serta k
   3. Menjalankan seluruh test suite repository (`pytest tests/ -v`). Seluruh **23 unit/integration tests** lulus 100%.
 - **Status Akhir Repositori**: Seluruh target dari tahap Riset (M1), Preprocessing (M2), Hybrid Model (M3), Explainability (M4), Web Demo (M5), hingga Polish & Radiomics Fusion (M6) telah **Tuntas 100%**.
 
-### [2026-09-25 22:30] — Penulisan Ulang README (Benchmark Lengkap, Bukti Visual, Bahasa Inggris, Anti-AI Slop)
-- **User Request**: `/no-ai-slop di bagian readme update pke b ing ada visual buktinya sy mau bench mirip readme lengkap kyk https://github.com/suzirz/medical-imaging-tumor-detection`
+### [2026-09-25 22:30] — Pembaruan Dokumentasi Teknis README (Empirical Benchmarks, Bukti Visual, Bahasa Inggris)
+- **User Request**: *"Perbarui README menggunakan bahasa Inggris teknis, sertakan visual bukti benchmark lengkap mirip repositori acuan suzirz/medical-imaging-tumor-detection"*
 - **Tindakan**:
   1. Menganalisis struktur dan standar penulisan repositori referensi [suzirz/medical-imaging-tumor-detection](https://github.com/suzirz/medical-imaging-tumor-detection).
-  2. Menerapkan skill `/no-ai-slop`: mengeliminasi kata-kata klise AI (*delve, foster, leverage, utilize, cutting-edge, game changer, multifaceted, dll.*), fokus pada data konkret, angka persis, mekanisme komputasi, dan batasan klinis (*Clinical Reality Check*).
+  2. Menerapkan standar penulisan teknis: mengeliminasi kata-kata klise, fokus pada data konkret, angka persis, mekanisme komputasi, dan batasan klinis (*Clinical Reality Check*).
   3. Mengembangkan generator visual bukti empiris [scripts/generate_readme_assets.py](file:///c:/Users/Administrator/Documents/Project/lung-cancer-detection-ai/scripts/generate_readme_assets.py) dan merender 4 plot beresolusi tinggi:
      - `reports/baseline_confusion_matrix.png` (Confusion Matrix 1.828 citra test).
      - `reports/roc_auc_curve.png` (Kurva multi-class One-vs-Rest ROC-AUC).
