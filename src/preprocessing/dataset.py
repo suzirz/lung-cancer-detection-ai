@@ -40,7 +40,7 @@ class LungCTDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
         raw_path, label = self.samples[idx]
-        img_path = os.path.normpath(raw_path)
+        img_path = raw_path.replace("\\", "/")
         with Image.open(img_path) as img:
             image = img.convert("RGB")
 
@@ -94,7 +94,8 @@ def scan_dataset(data_dir: str) -> Tuple[List[Tuple[str, int]], Dict[str, int]]:
             file_paths.extend(glob.glob(os.path.join(cls_folder, "**", ext), recursive=True))
             
         for p in file_paths:
-            samples.append((p, class_to_idx[cls_name]))
+            portable_p = p.replace("\\", "/")
+            samples.append((portable_p, class_to_idx[cls_name]))
 
     return samples, class_to_idx
 
