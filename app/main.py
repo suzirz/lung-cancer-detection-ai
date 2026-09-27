@@ -246,11 +246,12 @@ with st.sidebar:
     st.markdown("#### 📊 Benchmark Model")
     st.markdown(
         """
-        - **Arsitektur:** EfficientNet-B0 (1.280 Embeddings)
-        - **Sensitivity / Recall:** `100.0%`
-        - **Accuracy:** `100.0%`
-        - **AUC-ROC Score:** `1.000`
-        - **Target Dataset:** IQ-OTH/NCCD (12.184 citra)
+        - **Backbone:** EfficientNet-B0 (1.280 Embeddings)
+        - **Malignant Recall:** `100.0%` (0 False Negative)
+        - **Group-Aware Accuracy:** `98.47%` (Held-Out Test)
+        - **5-Fold Cross-Val:** `98.59% ± 0.20%`
+        - **Architecture:** Hybrid Radiomics + Grad-CAM
+        - *Atensi visual menggunakan diferensiabel neural head untuk interpretasi Grad-CAM real-time.*
         """
     )
 
