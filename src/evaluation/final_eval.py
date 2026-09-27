@@ -99,22 +99,29 @@ def run_cross_validation_audit(
 def main():
     """
     Eksekusi audit evaluasi diagnostik dan 5-fold cross validation.
-    Membaca embedding tersimpan dari data/embeddings/ jika tersedia.
+    Membaca embedding tersimpan dari data/processed/ atau data/embeddings/.
     """
     print("=" * 60)
     print("EVALUASI DIAGNOSTIK LANJUTAN & 5-FOLD CROSS-VALIDATION")
     print("=" * 60)
 
-    train_emb_path = "data/embeddings/train_embeddings.npz"
-    if not os.path.exists(train_emb_path):
-        print(f"[!] Embedding file tidak ditemukan di {train_emb_path}.")
+    # Dukung path cnn_features (dari train_hybrid) dan fallback train_embeddings
+    candidate_paths = [
+        "data/processed/cnn_features_efficientnet_b0.npz",
+        "data/embeddings/train_embeddings.npz"
+    ]
+    train_emb_path = next((p for p in candidate_paths if os.path.exists(p)), None)
+
+    if not train_emb_path:
+        print(f"[!] Embedding file tidak ditemukan di: {candidate_paths}")
         print("[i] Jalankan ekstraksi fitur embedding terlebih dahulu:")
         print("    python -m src.training.train_hybrid")
         return
 
+    print(f"[*] Membaca embedding dari: {train_emb_path}")
     data = np.load(train_emb_path)
-    X_train = data["embeddings"]
-    y_train = data["labels"]
+    X_train = data.get("X_train", data.get("embeddings"))
+    y_train = data.get("y_train", data.get("labels"))
 
     print(f"[+] Menjalankan 5-Fold Stratified CV pada {len(y_train)} sampel training...")
     cv_results = run_cross_validation_audit(X_train, y_train, n_splits=5)
@@ -128,6 +135,19 @@ def main():
     print(f" - Mean Accuracy     : {cv_results['mean_accuracy']*100:.2f}% ± {cv_results['std_accuracy']*100:.2f}%")
     print(f" - Mean Macro Recall : {cv_results['mean_recall_macro']*100:.2f}% ± {cv_results['std_recall_macro']*100:.2f}%")
     print(f" - Mean Macro F1     : {cv_results['mean_f1_macro']*100:.2f}% ± {cv_results['std_f1_macro']*100:.2f}%")
+
+    # Generate Multi-Class ROC-AUC curve jika data test dan model hybrid tersedia
+    X_test = data.get("X_test", None)
+    y_test = data.get("y_test", None)
+    rf_model_path = "models/hybrid_random_forest.joblib"
+    if X_test is not None and y_test is not None and os.path.exists(rf_model_path):
+        import joblib
+        print("[*] Menghitung Multi-Class ROC-AUC pada test set murni...")
+        rf_model = joblib.load(rf_model_path)
+        class_names = ["Benign cases", "Malignant cases", "Normal cases"]
+        y_probs = rf_model.predict_proba(X_test)
+        roc_results = compute_roc_auc_multiclass(y_test, y_probs, class_names, output_path="reports/roc_auc_curve.png")
+        print(f"[OK] Kurva ROC-AUC disimpan ke: reports/roc_auc_curve.png (Macro AUC: {roc_results.get('macro_auc', 0.0):.4f})")
 
 
 if __name__ == "__main__":
