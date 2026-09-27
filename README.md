@@ -850,7 +850,7 @@ If you use this codebase, methodology, or results in your academic research, ple
 
 ```bibtex
 @misc{pulmoscan2024,
-  author = {Rizki, Suzir and Contributors},
+  author = {Maritza, Davin (Suzirz) and Contributors},
   title = {PulmoScan: Lung Cancer CT Detection and Explainability Framework},
   year = {2024},
   publisher = {GitHub},
