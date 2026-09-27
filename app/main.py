@@ -228,14 +228,28 @@ with st.sidebar:
             image_title = uploaded_file.name
 
     else:
-        uploaded_dcm = st.file_uploader(
-            "Pilih berkas DICOM CT Scan (.dcm):",
-            type=["dcm", "dicom"],
-            help="Unggah irisan CT scan 16-bit asli untuk kalibrasi Hounsfield Units & Lung Windowing (-600 HU)",
+        dcm_source_option = st.radio(
+            "Pilihan Sumber DICOM:",
+            options=["🧪 Sampel Klinis Bawaan (RS-CT-0941)", "📁 Unggah Berkas DICOM (.dcm)"],
+            index=0
         )
-        if uploaded_dcm is not None:
-            selected_dicom_bytes = uploaded_dcm.read()
-            image_title = uploaded_dcm.name
+        if dcm_source_option == "🧪 Sampel Klinis Bawaan (RS-CT-0941)":
+            sample_dcm_path = os.path.join(PROJECT_ROOT, "app", "samples", "clinical_sample.dcm")
+            if os.path.exists(sample_dcm_path):
+                with open(sample_dcm_path, "rb") as f:
+                    selected_dicom_bytes = f.read()
+                image_title = "clinical_sample.dcm (Patient ID: ID-RS-CT-0941)"
+            else:
+                st.error("Sampel DICOM bawaan tidak ditemukan.")
+        else:
+            uploaded_dcm = st.file_uploader(
+                "Pilih berkas DICOM CT Scan (.dcm):",
+                type=["dcm", "dicom"],
+                help="Unggah irisan CT scan 16-bit asli untuk kalibrasi Hounsfield Units & Lung Windowing (-600 HU)",
+            )
+            if uploaded_dcm is not None:
+                selected_dicom_bytes = uploaded_dcm.read()
+                image_title = uploaded_dcm.name
 
     st.markdown("---")
     st.markdown("#### 🎨 Pengaturan Grad-CAM")
