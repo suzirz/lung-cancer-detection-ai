@@ -62,7 +62,7 @@ def create_synthetic_dicom_file(rows: int = 128, cols: int = 128) -> bytes:
     ds.is_implicit_VR = False
 
     buffer = io.BytesIO()
-    ds.save_as(buffer, write_like_original=False)
+    ds.save_as(buffer, enforce_file_format=True)
     return buffer.getvalue()
 
 
