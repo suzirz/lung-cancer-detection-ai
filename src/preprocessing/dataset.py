@@ -34,7 +34,7 @@ def extract_group_id(filepath: str) -> str:
     Falls back to the full basename if the pattern does not match (e.g., non-standard filenames).
     """
     basename = os.path.basename(filepath)
-    match = re.match(r"^([\w\s]+?)\s*\((\d+)\)\s*\(\d+\)", basename)
+    match = re.match(r"^([\w\s]+?)\s*\((\d+)\)", basename)
     if match:
         class_prefix = match.group(1).strip()
         patient_num = match.group(2)

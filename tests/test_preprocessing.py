@@ -27,6 +27,9 @@ def test_extract_group_id_standard_filenames():
     assert extract_group_id("Benign case (44)(9).jpg") == "Benign case_44"
     # All augmentation variants of the same scan should map to the same group
     assert extract_group_id("Malignant case (445)(1).jpg") == extract_group_id("Malignant case (445)(6).jpg")
+    # CRITICAL: Original unaugmented scan must map to the EXACT same group as its augmented variants
+    assert extract_group_id("Malignant case (445).jpg") == "Malignant case_445"
+    assert extract_group_id("Malignant case (445).jpg") == extract_group_id("Malignant case (445)(1).jpg")
     assert extract_group_id("Normal case (84)(1).jpg") == extract_group_id("Normal case (84)(10).jpg")
 
 

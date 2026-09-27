@@ -1,4 +1,4 @@
-# PRD — Lung Cancer Detection AI
+    # PRD — Lung Cancer Detection AI
 
 ## 1. Latar Belakang
 Deteksi dini kanker paru dari CT scan masih sangat bergantung pada interpretasi manual radiolog. Ini rawan human error, butuh waktu lama, dan akses ke radiolog spesialis terbatas terutama di daerah. Project ini membangun sistem AI (hybrid Deep Learning + Machine Learning) untuk membantu skrining awal nodul paru dari citra CT scan.
