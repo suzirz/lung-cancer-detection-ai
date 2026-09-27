@@ -71,3 +71,9 @@ def test_cross_validation_audit():
     assert "mean_f1_macro" in cv_results
     assert "mean_accuracy" in cv_results
     assert cv_results["cv_folds"] == 3
+
+    # Test with patient group IDs (StratifiedGroupKFold)
+    groups = [f"patient_{i // 3}" for i in range(90)]
+    cv_group_results = run_cross_validation_audit(X, y, groups=groups, n_splits=3)
+    assert "mean_accuracy" in cv_group_results
+    assert cv_group_results["cv_folds"] == 3

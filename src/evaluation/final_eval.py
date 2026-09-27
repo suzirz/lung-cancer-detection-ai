@@ -10,12 +10,12 @@ Prinsip Codebase Design:
 
 import os
 import json
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc, roc_auc_score
 from sklearn.preprocessing import label_binarize
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
 
 from src.evaluation.metrics import calculate_metrics
@@ -72,18 +72,25 @@ def compute_roc_auc_multiclass(
 def run_cross_validation_audit(
     X: np.ndarray,
     y: np.ndarray,
+    groups: Optional[List[str]] = None,
     n_splits: int = 5,
     random_state: int = 42
 ) -> Dict[str, float]:
     """
-    Runs Stratified K-Fold Cross-Validation evaluating Macro Recall, Macro F1, and Accuracy.
+    Runs Stratified (Group) K-Fold Cross-Validation evaluating Macro Recall, Macro F1, and Accuracy.
+    Jika groups (patient case IDs) tersedia, menggunakan StratifiedGroupKFold untuk menjamin
+    zero data leakage antar-fold.
     """
-    cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    if groups is not None:
+        cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    else:
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
     clf = RandomForestClassifier(n_estimators=100, max_depth=10, class_weight="balanced", random_state=random_state, n_jobs=1)
 
-    scores_recall = cross_val_score(clf, X, y, cv=cv, scoring="recall_macro", n_jobs=1)
-    scores_f1 = cross_val_score(clf, X, y, cv=cv, scoring="f1_macro", n_jobs=1)
-    scores_acc = cross_val_score(clf, X, y, cv=cv, scoring="accuracy", n_jobs=1)
+    scores_recall = cross_val_score(clf, X, y, groups=groups, cv=cv, scoring="recall_macro", n_jobs=1)
+    scores_f1 = cross_val_score(clf, X, y, groups=groups, cv=cv, scoring="f1_macro", n_jobs=1)
+    scores_acc = cross_val_score(clf, X, y, groups=groups, cv=cv, scoring="accuracy", n_jobs=1)
 
     return {
         "cv_folds": n_splits,
@@ -123,8 +130,21 @@ def main():
     X_train = data.get("X_train", data.get("embeddings"))
     y_train = data.get("y_train", data.get("labels"))
 
-    print(f"[+] Menjalankan 5-Fold Stratified CV pada {len(y_train)} sampel training...")
-    cv_results = run_cross_validation_audit(X_train, y_train, n_splits=5)
+    train_split_path = "data/splits/train_split.json"
+    groups = None
+    if os.path.exists(train_split_path):
+        from src.preprocessing.dataset import extract_group_id
+        with open(train_split_path, "r", encoding="utf-8") as f:
+            train_samples = json.load(f)
+        if len(train_samples) == len(y_train):
+            groups = [extract_group_id(p[0]) for p in train_samples]
+            print(f"[+] Patient groups terdeteksi: {len(set(groups))} unique groups pada {len(groups)} sampel training.")
+
+    if groups is not None:
+        print(f"[+] Menjalankan 5-Fold Stratified Group CV (Zero Patient Leakage Antar-Fold)...")
+    else:
+        print(f"[+] Menjalankan 5-Fold Stratified CV pada {len(y_train)} sampel training...")
+    cv_results = run_cross_validation_audit(X_train, y_train, groups=groups, n_splits=5)
 
     os.makedirs("reports", exist_ok=True)
     out_cv_path = "reports/cv_audit.json"
