@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Tests](https://img.shields.io/badge/Tests-29%20Passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/Tests-33%20Passing-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)
 
 > [!WARNING]
@@ -763,7 +763,7 @@ Splits are performed at the patient group level (70/15/15 ratio applied to group
 
 ## Verification and Testing Suite
 
-All modules are covered by 29 automated unit and integration tests:
+All modules are covered by 33 automated unit and integration tests:
 
 ```bash
 python -m pytest tests/ -v
@@ -776,6 +776,7 @@ python -m pytest tests/ -v
 - **Explainability and Audits (`test_explainability_and_final_eval.py`)**: Grad-CAM heatmap bounds $[0, 1]$, alpha blending, multi-class ROC-AUC, 5-fold cross-validation.
 - **App Inference Service (`test_app_inference.py`)**: Checkpoint loading, probability normalization ($\sum p_i = 1.0$), real sample evaluation, error handling.
 - **Radiomics and Fusion (`test_radiomics.py`)**: First-order intensity metrics, uniform image variance handling, multimodal concatenation.
+- **Clinical DICOM Pipeline (`test_dicom_pipeline.py`)**: 16-bit CT parsing, Hounsfield Unit rescaling ($\text{HU} = \text{Pixel} \times \text{Slope} + \text{Intercept}$), standard lung windowing ($-600 \text{ HU} / 1500 \text{ W}$), and PACS Secondary Capture export.
 
 ---
 
