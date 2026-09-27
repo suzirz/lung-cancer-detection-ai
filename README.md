@@ -14,7 +14,48 @@
 
 PulmoScan classifies pulmonary nodules on chest computed tomography (CT) scans into three categories: normal parenchyma, benign nodules, and malignant neoplasms. The pipeline integrates a convolutional feature extractor (EfficientNet-B0), 13 quantitative intensity and morphological gradient radiomics descriptors, tree-based classifiers (Random Forest and XGBoost), and gradient-weighted class activation mapping (Grad-CAM).
 
-![PulmoScan Architecture](reports/architecture_diagram.jpg)
+```mermaid
+flowchart LR
+    classDef inputStyle fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef dlStyle fill:#1e3a8a,stroke:#60a5fa,stroke-width:1.5px,color:#f8fafc;
+    classDef radStyle fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#f8fafc;
+    classDef fuseStyle fill:#312e81,stroke:#818cf8,stroke-width:1.5px,color:#f8fafc;
+    classDef clfStyle fill:#7c2d12,stroke:#fb923c,stroke-width:1.5px,color:#f8fafc;
+    classDef camStyle fill:#831843,stroke:#f472b6,stroke-width:1.5px,color:#f8fafc;
+    classDef outStyle fill:#022c22,stroke:#10b981,stroke-width:2px,color:#f0fdf4;
+
+    Input["Axial CT Scan Slice<br/>(224 × 224 RGB)"]:::inputStyle
+
+    subgraph FeatureExtraction ["Dual-Branch Feature Extraction"]
+        CNN["EfficientNet-B0 Backbone<br/>(Pretrained ImageNet, 4.01M)"]:::dlStyle
+        Embed["Latent Embedding<br/>(1,280-dim Vector)"]:::dlStyle
+        Rad["Radiomics Extractor<br/>(Moments & Morphology)"]:::radStyle
+        RadFeat["Radiomics Descriptors<br/>(13 Features)"]:::radStyle
+    end
+
+    subgraph Aggregation ["Feature Aggregation"]
+        Concat["Multimodal Feature Fusion<br/>(1,293-dim Concatenated)"]:::fuseStyle
+    end
+
+    subgraph DecisionTriage ["Classifiers & Explainability"]
+        RF["Random Forest Classifier<br/>(Balanced Class Weights)"]:::clfStyle
+        XGB["XGBoost Classifier<br/>(Subsample 0.8)"]:::clfStyle
+        Softmax["CNN Softmax Head<br/>(Direct Logits)"]:::dlStyle
+        GradCAM["Grad-CAM Engine<br/>(Target Layer: features.8)"]:::camStyle
+        Heatmap["Spatial Attention Heatmap<br/>(Jet / Viridis Overlay)"]:::camStyle
+    end
+
+    Output["Clinical Triage Output<br/>Normal | Benign | Malignant<br/>(Malignancy Alert: &tau; &ge; 0.35)"]:::outStyle
+
+    Input --> CNN --> Embed
+    Input --> Rad --> RadFeat
+    Embed --> Concat
+    RadFeat --> Concat
+    Concat --> RF --> Output
+    Concat --> XGB --> Output
+    CNN --> Softmax --> Output
+    CNN -. Gradients .-> GradCAM --> Heatmap --> Output
+```
 
 ---
 
@@ -139,7 +180,7 @@ PulmoScan eliminates this flaw by grouping samples by patient ID (`src/preproces
 ### 3. Patient-Level Aggregation
 Because IQ-OTHNCCD provides offline augmented variants, evaluating individual slices still tests 10 variants per test patient. To evaluate genuine patient-level accuracy, predictions across all slices belonging to each patient group $g$ are aggregated via majority voting:
 
-$$\hat{y}_g = \text{mode}\left(\left\{\hat{y}_i : i \in \mathcal{S}_g\right\}\right)$$
+$$\hat{y}_g = \text{mode}(\{ \hat{y}_i : i \in \mathcal{S}_g \})$$
 
 Across all 329 held-out patient groups in the test set:
 - **Patient-Level Diagnostic Accuracy**: 98.78% (325 of 329 patients correctly diagnosed).

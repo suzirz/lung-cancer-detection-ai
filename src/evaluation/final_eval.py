@@ -94,3 +94,41 @@ def run_cross_validation_audit(
         "mean_accuracy": float(np.mean(scores_acc)),
         "std_accuracy": float(np.std(scores_acc)),
     }
+
+
+def main():
+    """
+    Eksekusi audit evaluasi diagnostik dan 5-fold cross validation.
+    Membaca embedding tersimpan dari data/embeddings/ jika tersedia.
+    """
+    print("=" * 60)
+    print("EVALUASI DIAGNOSTIK LANJUTAN & 5-FOLD CROSS-VALIDATION")
+    print("=" * 60)
+
+    train_emb_path = "data/embeddings/train_embeddings.npz"
+    if not os.path.exists(train_emb_path):
+        print(f"[!] Embedding file tidak ditemukan di {train_emb_path}.")
+        print("[i] Jalankan ekstraksi fitur embedding terlebih dahulu:")
+        print("    python -m src.training.train_hybrid")
+        return
+
+    data = np.load(train_emb_path)
+    X_train = data["embeddings"]
+    y_train = data["labels"]
+
+    print(f"[+] Menjalankan 5-Fold Stratified CV pada {len(y_train)} sampel training...")
+    cv_results = run_cross_validation_audit(X_train, y_train, n_splits=5)
+
+    os.makedirs("reports", exist_ok=True)
+    out_cv_path = "reports/cv_audit.json"
+    with open(out_cv_path, "w", encoding="utf-8") as f:
+        json.dump(cv_results, f, indent=2)
+
+    print(f"[OK] Audit 5-Fold CV selesai dan disimpan ke: {out_cv_path}")
+    print(f" - Mean Accuracy     : {cv_results['mean_accuracy']*100:.2f}% ± {cv_results['std_accuracy']*100:.2f}%")
+    print(f" - Mean Macro Recall : {cv_results['mean_recall_macro']*100:.2f}% ± {cv_results['std_recall_macro']*100:.2f}%")
+    print(f" - Mean Macro F1     : {cv_results['mean_f1_macro']*100:.2f}% ± {cv_results['std_f1_macro']*100:.2f}%")
+
+
+if __name__ == "__main__":
+    main()

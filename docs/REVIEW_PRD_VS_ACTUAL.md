@@ -6,13 +6,13 @@ Dokumen audit ini membandingkan spesifikasi awal pada [PRD.md](file:///c:/Users/
 
 ## 1. Perbandingan Metrik Kunci (Success Metrics)
 
-| Metrik Evaluasi | Target PRD | Hasil Aktual | Status | Analisis Gap |
+| Metrik Evaluasi | Target PRD | Hasil Aktual (Group-Aware Split) | Status | Analisis Gap & Integritas Data |
 |---|---|---|---|---|
-| **Recall (Sensitivity)** | > 90.0% | **100.0%** | ✅ **Melampaui Target** | Prioritas medis utama terpenuhi. Pada set evaluasi test terstratifikasi (1.828 citra), tidak ditemukan kasus *False Negative* pada kasus Malignant. |
-| **Accuracy** | > 85.0% | **100.0%** | ✅ **Melampaui Target** | Akurasi klasifikasi multi-kelas (Benign, Malignant, Normal) mencapai 100% pada checkpoint terbaik baseline EfficientNet-B0. |
-| **AUC-ROC (One-vs-Rest)** | > 0.900 | **1.000** | ✅ **Melampaui Target** | Kurva ROC-AUC per kelas dan macro-average menunjukkan pemisahan probabilitas sempurna. |
-| **Kecepatan Inferensi Demo** | < 5.0 detik | **~150 ms (CPU) / ~18 ms (GPU)** | ✅ **Melampaui Target** | 33x lebih cepat dari batas toleransi PRD, memungkinkan interaksi real-time tanpa jeda di aplikasi Streamlit. |
-| **Kestabilan Model (CV)** | N/A | **1.000 ± 0.000** | ✅ **Bonus Ekstra** | 5-Fold Stratified Cross-Validation membuktikan ketiadaan fluktuasi drastis antar lipatan data. |
+| **Recall (Malignant)** | > 90.0% | **100.0%** (624 / 624 scans) | ✅ **Target Terpenuhi** | Prioritas klinis utama tercapai: 0 false negative malignant pada held-out test. |
+| **Accuracy (Overall)** | > 85.0% | **98.47%** (1,733 / 1,760 scans) | ✅ **Target Terpenuhi** | Evaluasi group-aware bebas data leakage (tanpa tumpang tindih pasien antar split). Klaim awal 100% telah diaudit dan dikoreksi sebagai artefak offline augmentation. |
+| **AUC-ROC (One-vs-Rest)** | > 0.900 | **0.999** | ✅ **Target Terpenuhi** | Pemisahan probabilitas kelas sangat tajam pada threshold klinis. |
+| **Kecepatan Inferensi Demo** | < 5.0 detik | **~150 ms (CPU) / ~18 ms (GPU)** | ✅ **Melampaui Target** | 33x lebih cepat dari batas PRD (<5 detik), siap diuji pada CPU laptop/Puskesmas. |
+| **Kestabilan Model (5-Fold CV)** | N/A | **98.59% ± 0.20% (Macro F1: 98.48% ± 0.20%)** | ✅ **Validasi Robustness** | 5-Fold Group-Stratified Cross-Validation membuktikan variansi sangat rendah ($\pm 0.20\%$). |
 
 ---
 

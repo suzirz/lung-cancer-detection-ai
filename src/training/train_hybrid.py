@@ -99,12 +99,15 @@ def run_hybrid_pipeline(config_path: str = "configs/default.yaml"):
 
     # 6. Komparasi dengan Baseline CNN-only
     baseline_metrics_path = "reports/baseline_metrics.json"
-    cnn_metrics = {}
-    if os.path.exists(baseline_metrics_path):
-        with open(baseline_metrics_path, "r", encoding="utf-8") as f:
-            cnn_metrics = json.load(f)
-    else:
-        cnn_metrics = {"accuracy": 0.9986, "recall_macro": 1.0, "f1_macro": 0.999}
+    if not os.path.exists(baseline_metrics_path):
+        raise FileNotFoundError(
+            f"File '{baseline_metrics_path}' tidak ditemukan. "
+            "Jalankan baseline training terlebih dahulu (python -m src.training.train) "
+            "sebelum menjalankan perbandingan hybrid."
+        )
+
+    with open(baseline_metrics_path, "r", encoding="utf-8") as f:
+        cnn_metrics = json.load(f)
 
     comparison = {
         "CNN-Only (EfficientNet-B0)": cnn_metrics,
