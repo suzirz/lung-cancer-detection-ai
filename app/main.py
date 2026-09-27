@@ -1,15 +1,16 @@
 """
-PulmoScan AI — Interactive Clinical Lung Cancer CT Detection & Explainability Demo
+PulmoScan AI — Conversational Clinical Co-Pilot & Thoracic Diagnostic Studio
 File: app/main.py
 
-Web Application berbasis Streamlit untuk skrining klasifikasi nodul paru:
-- Deteksi 3 Kelas: Normal, Benign (Jinak), Malignant (Kanker Ganas).
-- Explainable AI: Grad-CAM Saliency Maps untuk visualisasi atensi spasial model.
-- Model Backbone: Transfer Learning EfficientNet-B0 (100% Validation Recall pada Tesla T4).
+Web Application berbasis Streamlit:
+- Tab 1: AI Clinical Co-Pilot (Conversational Interface ala Ollama/ChatGPT)
+- Tab 2: Diagnostic Studio (Visualisasi Grad-CAM Komprehensif & PACS DICOM)
+- Ekspor Rekam Medis: Hospital-Grade Clinical PDF Report & DICOM Secondary Capture
 """
 
 import os
 import sys
+import io
 from pathlib import Path
 from PIL import Image
 import streamlit as st
@@ -20,41 +21,40 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.inference_service import InferenceService, PredictionResult, DicomPredictionResult, CLASS_NAMES
+from app.chatbot_engine import ChatbotEngine, ChatResponse
+from src.evaluation.report_generator import generate_clinical_pdf
+from src.dicom.processor import load_dicom_slice
 
 
 # ---------------------------------------------------------------------------
-# Konfigurasi Halaman & Design Tokens
+# Konfigurasi Halaman & Design System
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="PulmoScan AI — Lung Cancer CT Screening",
+    page_title="PulmoScan AI — Clinical Co-Pilot",
     page_icon="🫁",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom High-End Styling: Dark Medical Slate Theme
 CUSTOM_CSS = """
 <style>
-    /* Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    /* Background styling */
     .stApp {
         background: radial-gradient(circle at 15% 15%, #0d1527 0%, #070a13 100%);
         color: #f1f5f9;
     }
 
-    /* Header styling */
     .main-header {
         background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 16px;
-        padding: 24px 28px;
-        margin-bottom: 24px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
         backdrop-filter: blur(12px);
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     }
@@ -68,7 +68,7 @@ CUSTOM_CSS = """
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.06em;
     }
 
     .badge-online {
@@ -77,18 +77,17 @@ CUSTOM_CSS = """
         border: 1px solid rgba(52, 211, 153, 0.3);
     }
 
-    .badge-t4 {
+    .badge-verified {
         background: rgba(59, 130, 246, 0.15);
         color: #60a5fa;
         border: 1px solid rgba(96, 165, 250, 0.3);
     }
 
-    /* Diagnosis Alert Cards */
     .diag-card {
-        border-radius: 14px;
-        padding: 20px 24px;
-        margin-top: 16px;
-        margin-bottom: 20px;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-top: 12px;
+        margin-bottom: 16px;
         border: 1px solid;
     }
 
@@ -110,45 +109,41 @@ CUSTOM_CSS = """
         color: #a7f3d0;
     }
 
-    /* Metric Containers */
     .metric-box {
         background: rgba(30, 41, 59, 0.45);
         border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 12px;
-        padding: 16px;
+        padding: 14px;
         text-align: center;
     }
     .metric-value {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
         color: #38bdf8;
     }
     .metric-label {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         color: #94a3b8;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
         margin-top: 4px;
     }
 
-    /* Sidebar aesthetics */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #090e1a 0%, #060911 100%);
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    /* Code & Note disclaimer */
     .medical-disclaimer {
         background: rgba(15, 23, 42, 0.6);
         border-left: 3px solid #3b82f6;
-        padding: 14px 18px;
+        padding: 12px 16px;
         border-radius: 0 10px 10px 0;
-        font-size: 13px;
+        font-size: 12px;
         color: #94a3b8;
-        line-height: 1.6;
-        margin-top: 24px;
+        line-height: 1.5;
+        margin-top: 20px;
+    }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #090e1a 0%, #060911 100%);
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
     }
 </style>
 """
@@ -156,35 +151,62 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
-# Inisialisasi Service dengan Streamlit Cache Resource
+# Inisialisasi Service & Chatbot Engine
 # ---------------------------------------------------------------------------
-@st.cache_resource(show_spinner="Memuat model klinis & bobot neural network...")
+@st.cache_resource(show_spinner="Memuat model inferensi EfficientNet-B0...")
 def get_service() -> InferenceService:
     model_path = os.path.join(PROJECT_ROOT, "models", "baseline_efficientnet_b0_best.pth")
     return InferenceService(model_path=model_path)
 
 
+service = get_service()
+
+if "chatbot_engine" not in st.session_state:
+    st.session_state.chatbot_engine = ChatbotEngine()
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": (
+                "👋 **Halo Dokter! Saya PulmoScan AI Co-Pilot.**\n\n"
+                "Saya siap membantu skrining CT scan toraks berbasis **EfficientNet-B0 (Group-KFold Verified: 97.42% Akurasi, 96.97% Recall)**.\n"
+                "- Pilih sampel kasus di sidebar atau unggah citra CT (JPG/PNG/DICOM).\n"
+                "- Tanyakan rincian diagnostik, rekomendasi Fleischner Society, atau minta ekspor laporan PDF resmi."
+            )
+        }
+    ]
+
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
+if "last_display_image" not in st.session_state:
+    st.session_state.last_display_image = None
+if "patient_id" not in st.session_state:
+    st.session_state.patient_id = "ANON-8821"
+
+
 # ---------------------------------------------------------------------------
-# Sidebar: Parameter & Konfigurasi
+# Sidebar: Pemilihan Citra & Parameter
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 🫁 PulmoScan AI")
     st.markdown(
         """
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
-            <span class="badge-pill badge-online">● ONLINE</span>
-            <span class="badge-pill badge-t4">TESLA T4 MODEL</span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
+            <span class="badge-pill badge-online">🟢 ONLINE</span>
+            <span class="badge-pill badge-verified">GROUP-KFOLD VERIFIED</span>
         </div>
         """,
         unsafe_allow_html=True
     )
 
     st.markdown("---")
-    st.markdown("#### ⚙️ Input Citra CT Scan")
+    st.session_state.patient_id = st.text_input("ID Pasien (EHR/PACS):", value=st.session_state.patient_id)
 
+    st.markdown("#### 📁 Sumber Citra CT Scan")
     input_mode = st.radio(
-        "Pilih Sumber Citra:",
-        options=["🧪 Contoh Klinis Tersimpan", "📤 Unggah Citra (PNG/JPG)", "🏥 Berkas Medis DICOM (.dcm)"],
+        "Pilih Sumber:",
+        options=["💾 Contoh Kasus Tersimpan", "📤 Unggah Citra (PNG/JPG)", "🏥 Berkas Medis DICOM (.dcm)"],
         index=0,
     )
 
@@ -192,314 +214,335 @@ with st.sidebar:
     selected_dicom_bytes = None
     image_title = ""
 
-    if input_mode == "🧪 Contoh Klinis Tersimpan":
+    if input_mode == "💾 Contoh Kasus Tersimpan":
         sample_choice = st.selectbox(
-            "Pilih Kasus Diagnosis:",
+            "Pilih Kasus:",
             options=[
-                "Benign (Kasus Nodul Jinak)",
                 "Malignant (Kasus Kanker Ganas)",
+                "Benign (Kasus Nodul Jinak)",
                 "Normal (Jaringan Paru Sehat)",
             ],
-            index=1,
+            index=0,
         )
-
         sample_mapping = {
             "Benign (Kasus Nodul Jinak)": "benign_sample.jpg",
             "Malignant (Kasus Kanker Ganas)": "malignant_sample.jpg",
             "Normal (Jaringan Paru Sehat)": "normal_sample.jpg",
         }
-        sample_filename = sample_mapping[sample_choice]
-        sample_path = os.path.join(PROJECT_ROOT, "app", "samples", sample_filename)
-
+        sample_path = os.path.join(PROJECT_ROOT, "app", "samples", sample_mapping[sample_choice])
         if os.path.exists(sample_path):
             selected_image = Image.open(sample_path)
             image_title = sample_choice
         else:
-            st.error(f"File sampel tidak ditemukan di {sample_path}")
+            st.error("Sampel tidak ditemukan.")
 
     elif input_mode == "📤 Unggah Citra (PNG/JPG)":
-        uploaded_file = st.file_uploader(
-            "Pilih berkas CT Scan (PNG/JPG):",
-            type=["png", "jpg", "jpeg"],
-            help="Unggah potongan aksial citra CT scan paru",
-        )
+        uploaded_file = st.file_uploader("Unggah Irisan CT Scan Paru:", type=["jpg", "jpeg", "png"])
         if uploaded_file is not None:
-            selected_image = Image.open(uploaded_file)
+            selected_image = Image.open(uploaded_file).convert("RGB")
             image_title = uploaded_file.name
 
-    else:
-        dcm_source_option = st.radio(
-            "Pilihan Sumber DICOM:",
-            options=["🧪 Sampel Klinis Bawaan (RS-CT-0941)", "📁 Unggah Berkas DICOM (.dcm)"],
-            index=0
-        )
-        if dcm_source_option == "🧪 Sampel Klinis Bawaan (RS-CT-0941)":
-            sample_dcm_path = os.path.join(PROJECT_ROOT, "app", "samples", "clinical_sample.dcm")
-            if os.path.exists(sample_dcm_path):
-                with open(sample_dcm_path, "rb") as f:
-                    selected_dicom_bytes = f.read()
-                image_title = "clinical_sample.dcm (Patient ID: ID-RS-CT-0941)"
-            else:
-                st.error("Sampel DICOM bawaan tidak ditemukan.")
-        else:
-            uploaded_dcm = st.file_uploader(
-                "Pilih berkas DICOM CT Scan (.dcm):",
-                type=["dcm", "dicom"],
-                help="Unggah irisan CT scan 16-bit asli untuk kalibrasi Hounsfield Units & Lung Windowing (-600 HU)",
-            )
-            if uploaded_dcm is not None:
-                selected_dicom_bytes = uploaded_dcm.read()
-                image_title = uploaded_dcm.name
+    elif input_mode == "🏥 Berkas Medis DICOM (.dcm)":
+        uploaded_dcm = st.file_uploader("Unggah Berkas DICOM (.dcm):", type=["dcm"])
+        if uploaded_dcm is not None:
+            selected_dicom_bytes = uploaded_dcm.read()
+            image_title = uploaded_dcm.name
 
     st.markdown("---")
-    st.markdown("#### 🎨 Pengaturan Grad-CAM")
-    cam_alpha = st.slider(
-        "Transparansi Heatmap (Alpha):",
-        min_value=0.1,
-        max_value=0.9,
-        value=0.45,
-        step=0.05,
-        help="Semakin tinggi nilai, semakin pekat heatmap atensi yang menutupi citra asli",
-    )
-    cam_colormap = st.selectbox(
-        "Colormap Grad-CAM:",
-        options=["jet", "inferno", "viridis", "magma"],
-        index=0,
-    )
-
-    st.markdown("---")
-    st.markdown("#### 📊 Benchmark Model")
-    st.markdown(
-        """
-        - **Backbone:** EfficientNet-B0 (1.280 Embeddings)
-        - **Malignant Recall:** `100.0%` (0 False Negative)
-        - **Group-Aware Accuracy:** `98.47%` (Held-Out Test)
-        - **5-Fold Cross-Val:** `98.59% ± 0.20%`
-        - **Architecture:** Hybrid Radiomics + Grad-CAM
-        - *Atensi visual menggunakan diferensiabel neural head untuk interpretasi Grad-CAM real-time.*
-        """
-    )
+    st.markdown("#### 🎨 Konfigurasi Grad-CAM")
+    cam_colormap = st.selectbox("Colormap:", ["jet", "viridis", "inferno", "magma", "turbo"], index=0)
+    cam_alpha = st.slider("Alpha Blend Transparansi:", 0.1, 0.9, 0.45, 0.05)
 
 
 # ---------------------------------------------------------------------------
-# Main Panel: Header & Banner
+# Header Utama
 # ---------------------------------------------------------------------------
 st.markdown(
     """
     <div class="main-header">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <h1 style="font-size: 28px; font-weight: 800; margin: 0 0 8px 0; color: #ffffff; letter-spacing: -0.02em;">
-                    🫁 PulmoScan AI: Intelligent Lung CT Cancer Detection & Grad-CAM
+                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #f8fafc;">
+                    🫁 PulmoScan AI — Thoracic Clinical Co-Pilot
                 </h1>
-                <p style="font-size: 15px; color: #94a3b8; margin: 0; line-height: 1.5;">
-                    Sistem Skrining Medis Berbantu Kecerdasan Buatan (AI Decision Support) dengan Peta Atensi Spasial untuk Deteksi Dini Kanker Paru
+                <p style="margin: 4px 0 0 0; font-size: 13px; color: #94a3b8;">
+                    Sistem Pendukung Keputusan Klinis Berbasis EfficientNet-B0 (Zero-Leakage Group Cross-Validation)
                 </p>
             </div>
             <div style="text-align: right;">
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.2);">
-                    FP16 CUDA INFERENCE READY
-                </span>
+                <span class="badge-pill badge-verified">UNSEEN CV: 97.42% ACC</span>
+                <span class="badge-pill badge-online">AUC: 0.9998</span>
             </div>
         </div>
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
+tab_chat, tab_studio = st.tabs(["💬 AI Clinical Co-Pilot (Chatbot)", "🔬 Diagnostic Studio & PACS"])
+
 
 # ---------------------------------------------------------------------------
-# Processing & Display Pipeline
+# TAB 1: Conversational AI Co-Pilot (Ollama/ChatGPT Style)
 # ---------------------------------------------------------------------------
-if selected_image is None and selected_dicom_bytes is None:
-    st.info("👈 Silakan pilih contoh klinis di sidebar atau unggah citra CT scan (PNG/JPG/DICOM) untuk memulai analisis.")
-else:
-    try:
-        service = get_service()
-    except Exception as e:
-        st.error(f"Gagal memuat model: {e}")
-        st.stop()
+with tab_chat:
+    # Action bar atas untuk memproses citra yang dipilih ke dalam chat
+    col_btn, col_info = st.columns([1, 3])
+    with col_btn:
+        run_chat_analysis = st.button("🚀 Analisis Citra di Chat", use_container_width=True, type="primary")
 
-    is_dicom = selected_dicom_bytes is not None
-
-    # Jalankan inferensi & Grad-CAM
-    with st.spinner("Menganalisis fitur spasial CT scan & menghasilkan peta atensi Grad-CAM..."):
-        if is_dicom:
-            result: DicomPredictionResult = service.predict_dicom(
-                selected_dicom_bytes,
-                alpha=cam_alpha,
-                colormap=cam_colormap,
-            )
-            # Dapatkan citra input dari hasil windowing
-            from src.dicom.processor import load_dicom_slice
-            dcm_slice = load_dicom_slice(selected_dicom_bytes)
-            display_input_image = dcm_slice.windowed_image
+    with col_info:
+        if selected_image is not None or selected_dicom_bytes is not None:
+            st.caption(f"📁 Citra aktif siap dianalisis: **{image_title}**")
         else:
-            result: PredictionResult = service.predict(
-                selected_image,
-                alpha=cam_alpha,
-                colormap=cam_colormap,
+            st.caption("Pilih sampel atau unggah citra di sidebar kiri untuk memulai.")
+
+    if run_chat_analysis:
+        if selected_dicom_bytes is not None:
+            with st.spinner("Memproses berkas DICOM & menjalankan inferensi..."):
+                result = service.predict_dicom(selected_dicom_bytes, alpha=cam_alpha, colormap=cam_colormap)
+                dcm_slice = load_dicom_slice(selected_dicom_bytes)
+                display_img = dcm_slice.windowed_image
+        elif selected_image is not None:
+            with st.spinner("Mengevaluasi irisan CT Scan dengan Grad-CAM..."):
+                result = service.predict(selected_image, alpha=cam_alpha, colormap=cam_colormap)
+                display_img = selected_image
+        else:
+            result = None
+            display_img = None
+            st.warning("Silakan pilih atau unggah citra terlebih dahulu.")
+
+        if result is not None:
+            st.session_state.last_result = result
+            st.session_state.last_display_image = display_img
+
+            # Dapatkan laporan terstruktur dari ChatbotEngine
+            report_response = st.session_state.chatbot_engine.format_diagnostic_report(
+                result, patient_id=st.session_state.patient_id
             )
-            display_input_image = selected_image
 
-    # 1. Grid Visualisasi: Citra Asli vs Grad-CAM
-    col_orig, col_cam = st.columns(2)
+            # Tambahkan ke riwayat chat
+            st.session_state.messages.append({
+                "role": "user",
+                "content": f"Tolong analisis citra CT Scan `{image_title}` untuk pasien `{st.session_state.patient_id}`."
+            })
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": report_response.text,
+                "image": report_response.image
+            })
 
-    with col_orig:
-        caption_text = f"Input: {image_title} ({display_input_image.size[0]}x{display_input_image.size[1]} px)"
-        if is_dicom:
-            caption_text += " [DICOM Standard Lung Window: -600 HU / 1500 W]"
-        st.markdown("#### 📷 Citra CT Scan Asli")
-        st.image(
-            display_input_image,
-            caption=caption_text,
-            use_container_width=True,
-        )
+    # Render Riwayat Chat
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("image") is not None:
+                st.image(msg["image"], caption="Grad-CAM Diagnostic Attention Overlay", width=340)
 
-    with col_cam:
-        st.markdown(f"#### 🔍 Peta Atensi Grad-CAM (`{cam_colormap.upper()}`)")
-        st.image(
-            result.overlay_image,
-            caption=f"Area Atensi Diagnostik Tertinggi (Fokus Fitur Lapisan Konvolusi Terakhir)",
-            use_container_width=True,
-        )
-
-    # Panel Khusus DICOM Metadata jika berkas medis asli diunggah
-    if is_dicom and isinstance(result, DicomPredictionResult):
-        st.markdown(
-            f"""
-            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 14px 18px; margin: 16px 0;">
-                <h4 style="margin: 0 0 8px 0; color: #38bdf8; font-size: 15px;">🏥 Informasi Radiologi & Hounsfield Units (DICOM Medis)</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size: 13px; color: #cbd5e1;">
-                    <div><strong>Patient ID:</strong> {result.metadata.get('patient_id', 'N/A')}</div>
-                    <div><strong>Slice Thickness:</strong> {result.metadata.get('slice_thickness_mm', 1.0)} mm</div>
-                    <div><strong>KVP:</strong> {result.metadata.get('kvp', 120.0)} kV</div>
-                    <div><strong>HU Range:</strong> {result.hu_min:.0f} s.d. {result.hu_max:.0f} HU (Mean: {result.hu_mean:.0f})</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    # 2. Status Diagnosis Card
-    if result.class_name == "Malignant":
-        st.markdown(
-            f"""
-            <div class="diag-card diag-malignant">
-                <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800;">🚨 TERDETEKSI INDIKASI KANKER GANAS (MALIGNANT)</h3>
-                <p style="margin: 0; font-size: 14px; opacity: 0.95;">
-                    Model mengidentifikasi pola densitas tinggi dan morfologi mencurigakan konsisten dengan nodul ganas paru.
-                    Disarankan verifikasi klinis mendesak oleh Dokter Spesialis Paru / Radiolog Konsultan Onkologi.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    elif result.class_name == "Benign":
-        st.markdown(
-            f"""
-            <div class="diag-card diag-benign">
-                <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800;">⚠️ TERDETEKSI NODUL JINAK (BENIGN)</h3>
-                <p style="margin: 0; font-size: 14px; opacity: 0.95;">
-                    Model mengidentifikasi struktur nodul dengan karakteristik non-invasif/jinak.
-                    Disarankan pemantauan berkala (follow-up CT scan dalam 3–6 bulan) untuk memastikan stabilitas ukuran nodul.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f"""
-            <div class="diag-card diag-normal">
-                <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800;">✅ JARINGAN PARU NORMAL / TIDAK TERLIHAT KELAINAN SIGNIFIKAN</h3>
-                <p style="margin: 0; font-size: 14px; opacity: 0.95;">
-                    Arsitektur parenkim paru dan vaskulatur tampak dalam batas normal tanpa nodul mencurigakan yang terdeteksi.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # 3. Metrik Statistik Inferensi
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-value">{result.class_name.upper()}</div>
-                <div class="metric-label">Prediksi Kelas</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with m2:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-value">{result.confidence * 100:.1f}%</div>
-                <div class="metric-label">Tingkat Keyakinan</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with m3:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-value">{result.latency_ms:.1f} ms</div>
-                <div class="metric-label">Latensi Inferensi</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with m4:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-value">{str(service.device).upper()}</div>
-                <div class="metric-label">Perangkat Pemroses</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # 4. Distribusi Probabilitas Multi-Kelas
-    st.markdown("#### 📈 Distribusi Probabilitas Diagnostik")
-    for cls in CLASS_NAMES:
-        prob = result.probabilities[cls]
-        col_lbl, col_bar = st.columns([1, 4])
-        with col_lbl:
-            st.markdown(f"**{cls}**")
-        with col_bar:
-            st.progress(float(prob), text=f"{prob * 100:.2f}%")
-
-    # Fitur Ekspor DICOM Secondary Capture untuk PACS
-    if is_dicom and isinstance(result, DicomPredictionResult) and result.secondary_capture_dcm is not None:
-        import io
+    # Quick Suggestion Chips jika ada hasil diagnosis aktif
+    if st.session_state.last_result is not None:
         st.markdown("---")
-        st.markdown("#### 💾 Ekspor Hasil Analisis ke Format Standar Medis (PACS Ready)")
-        sc_buffer = io.BytesIO()
-        result.secondary_capture_dcm.save_as(sc_buffer, enforce_file_format=True)
-        st.download_button(
-            label="📥 Unduh DICOM Secondary Capture (.dcm) dengan Peta Atensi Grad-CAM",
-            data=sc_buffer.getvalue(),
-            file_name=f"pulmoscan_secondary_capture_{result.class_name.lower()}.dcm",
-            mime="application/dicom",
-            help="Unduh file DICOM standar untuk diimpor ke sistem PACS RS (Horos, Radiant, GE Centricity)",
-        )
+        st.markdown("💡 **Pertanyaan Lanjutan Klinis Cepat:**")
+        chip1, chip2, chip3, chip4 = st.columns(4)
+        quick_prompt = None
+        with chip1:
+            if st.button("❓ Kenapa Malignant?", use_container_width=True):
+                quick_prompt = "Kenapa didiagnosis malignant?"
+        with chip2:
+            if st.button("📋 Panduan Fleischner", use_container_width=True):
+                quick_prompt = "Apa rekomendasi Fleischner Society untuk nodul ini?"
+        with chip3:
+            if st.button("🔍 Cara Baca Grad-CAM", use_container_width=True):
+                quick_prompt = "Bagaimana cara membaca peta Grad-CAM ini?"
+        with chip4:
+            if st.button("📄 Buat Laporan PDF", use_container_width=True):
+                quick_prompt = "Tolong siapkan laporan resmi PDF rekam medis."
 
-    # 5. Penjelasan Klinis & Disclaimer
-    st.markdown(
-        """
-        <div class="medical-disclaimer">
-            <strong>⚠️ Catatan Klinis & Disclaimer Penting:</strong><br>
-            Aplikasi ini dibangun untuk tujuan penelitian akademik, edukasi, dan sistem pendukung keputusan klinis (Clinical Decision Support System / CDSS).
-            Hasil prediksi model AI dan peta atensi Grad-CAM ini <strong>bukan merupakan diagnosis medis resmi pengganti radiolog atau dokter spesialis paru</strong>.
-            Keputusan terapi dan penegakan diagnosis definitif wajib dikonfirmasi melalui evaluasi klinis komprehensif, biopsi patologi, atau pembacaan formal oleh dokter spesialis.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        if quick_prompt:
+            st.session_state.messages.append({"role": "user", "content": quick_prompt})
+            ans = st.session_state.chatbot_engine.respond(quick_prompt)
+            st.session_state.messages.append({"role": "assistant", "content": ans.text})
+            st.rerun()
+
+        # Tombol Download PDF Langsung di Chat
+        res = st.session_state.last_result
+        orig = st.session_state.last_display_image
+        if res is not None and orig is not None:
+            pdf_bytes = io.BytesIO()
+            pdata = {
+                "patient_id": st.session_state.patient_id,
+                "study_date": "2026-09-27",
+                "predicted_class": res.class_name,
+                "confidence": res.confidence,
+                "probabilities": res.probabilities,
+                "radiomics": {"Model": "EfficientNet-B0", "Grad-CAM Saliency": "Peak Centered"}
+            }
+            tmp_pdf_path = os.path.join(PROJECT_ROOT, "reports", f"report_{st.session_state.patient_id}.pdf")
+            generate_clinical_pdf(pdata, orig, res.overlay_image, output_path=tmp_pdf_path)
+            with open(tmp_pdf_path, "rb") as f:
+                pdf_data = f.read()
+
+            st.download_button(
+                label=f"📥 Unduh Laporan Resmi Rekam Medis (PDF) — {st.session_state.patient_id}",
+                data=pdf_data,
+                file_name=f"PulmoScan_Report_{st.session_state.patient_id}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+    # Input Chat Bebas
+    user_input = st.chat_input("Tanyakan apa saja kepada PulmoScan AI Co-Pilot...")
+    if user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        ans = st.session_state.chatbot_engine.respond(user_input)
+        st.session_state.messages.append({"role": "assistant", "content": ans.text})
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# TAB 2: Diagnostic Studio (Radiology & PACS Deep Dive)
+# ---------------------------------------------------------------------------
+with tab_studio:
+    if selected_image is None and selected_dicom_bytes is None:
+        st.info("Pilih citra CT scan atau sampel di sidebar untuk membuka Diagnostic Studio.")
+    else:
+        is_dicom = selected_dicom_bytes is not None
+
+        if is_dicom:
+            result = service.predict_dicom(selected_dicom_bytes, alpha=cam_alpha, colormap=cam_colormap)
+            dcm_slice = load_dicom_slice(selected_dicom_bytes)
+            display_img = dcm_slice.windowed_image
+        else:
+            result = service.predict(selected_image, alpha=cam_alpha, colormap=cam_colormap)
+            display_img = selected_image
+
+        st.session_state.last_result = result
+        st.session_state.last_display_image = display_img
+
+        col_orig, col_cam = st.columns(2)
+        with col_orig:
+            st.markdown("#### 📷 Citra CT Scan Asli (Lung Window)")
+            st.image(display_img, caption=f"Input: {image_title} ({display_img.size[0]}x{display_img.size[1]} px)", use_container_width=True)
+
+        with col_cam:
+            st.markdown(f"#### 🎯 Peta Atensi Grad-CAM (`{cam_colormap.upper()}`)")
+            st.image(result.overlay_image, caption="Area Atensi Tertinggi (Lapisan Konvolusi Terakhir)", use_container_width=True)
+
+        # Kartu Diagnostik
+        if result.class_name == "Malignant":
+            st.markdown(
+                """
+                <div class="diag-card diag-malignant">
+                    <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 800;">⚠️ TERDETEKSI INDIKASI KANKER GANAS (MALIGNANT)</h3>
+                    <p style="margin: 0; font-size: 13px; opacity: 0.95;">
+                        Model mendeteksi pola densitas tinggi dan tepi spikulasi mencurigakan. Segera lakukan verifikasi klinis dan biopsi/PET-CT.
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        elif result.class_name == "Benign":
+            st.markdown(
+                """
+                <div class="diag-card diag-benign">
+                    <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 800;">ℹ️ TERDETEKSI NODUL JINAK (BENIGN)</h3>
+                    <p style="margin: 0; font-size: 13px; opacity: 0.95;">
+                        Model mengidentifikasi struktur nodul dengan karakteristik non-invasif/jinak. Follow-up CT 6-12 bulan disarankan.
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                """
+                <div class="diag-card diag-normal">
+                    <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 800;">✅ JARINGAN PARU NORMAL / TANPA KELAINAN SIGNIFIKAN</h3>
+                    <p style="margin: 0; font-size: 13px; opacity: 0.95;">
+                        Parenkim paru dan vaskulatur dalam batas normal tanpa nodul signifikan.
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # 4 Metrik Box
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(f'<div class="metric-box"><div class="metric-value">{result.class_name.upper()}</div><div class="metric-label">Prediksi Kelas</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="metric-box"><div class="metric-value">{result.confidence * 100:.1f}%</div><div class="metric-label">Keyakinan (Confidence)</div></div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown(f'<div class="metric-box"><div class="metric-value">{result.latency_ms:.1f} ms</div><div class="metric-label">Latensi Inferensi</div></div>', unsafe_allow_html=True)
+        with m4:
+            st.markdown(f'<div class="metric-box"><div class="metric-value">{str(service.device).upper()}</div><div class="metric-label">Hardware Device</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Probabilitas Batang
+        st.markdown("#### 📊 Distribusi Probabilitas Diagnostik")
+        for cls in CLASS_NAMES:
+            prob = result.probabilities[cls]
+            col_lbl, col_bar = st.columns([1, 4])
+            with col_lbl:
+                st.markdown(f"**{cls}**")
+            with col_bar:
+                st.progress(float(prob), text=f"{prob * 100:.2f}%")
+
+        # Unduh PDF dari Studio
+        tmp_pdf_path = os.path.join(PROJECT_ROOT, "reports", f"report_{st.session_state.patient_id}.pdf")
+        pdata = {
+            "patient_id": st.session_state.patient_id,
+            "study_date": "2026-09-27",
+            "predicted_class": result.class_name,
+            "confidence": result.confidence,
+            "probabilities": result.probabilities,
+            "radiomics": {"Backbone": "EfficientNet-B0", "Latensi": f"{result.latency_ms:.1f} ms"}
+        }
+        generate_clinical_pdf(pdata, display_img, result.overlay_image, output_path=tmp_pdf_path)
+        with open(tmp_pdf_path, "rb") as f:
+            pdf_data = f.read()
+
+        st.markdown("---")
+        if is_dicom and isinstance(result, DicomPredictionResult) and result.secondary_capture_dcm is not None:
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    label="📄 Ekspor Laporan Medis (PDF)",
+                    data=pdf_data,
+                    file_name=f"PulmoScan_Report_{st.session_state.patient_id}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            with col_dl2:
+                sc_buffer = io.BytesIO()
+                result.secondary_capture_dcm.save_as(sc_buffer, enforce_file_format=True)
+                st.download_button(
+                    label="💾 Unduh DICOM PACS (.dcm)",
+                    data=sc_buffer.getvalue(),
+                    file_name=f"PulmoScan_{st.session_state.patient_id}_{result.class_name.lower()}.dcm",
+                    mime="application/dicom",
+                    use_container_width=True,
+                    help="Unduh file DICOM standar untuk diimpor ke sistem PACS RS (Horos, RadiAnt, GE Centricity)"
+                )
+        else:
+            st.download_button(
+                label="📄 Ekspor Laporan Medis (PDF)",
+                data=pdf_data,
+                file_name=f"PulmoScan_Report_{st.session_state.patient_id}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+
+# Disclaimer Footer
+st.markdown(
+    """
+    <div class="medical-disclaimer">
+        <strong>⚠️ Catatan Klinis & Legal Disclaimer:</strong><br>
+        PulmoScan AI dirancang sebagai Clinical Decision Support System (CDSS) untuk riset dan edukasi medis.
+        Hasil prediksi dan peta atensi Grad-CAM bukan pengganti pembacaan definitif dokter spesialis radiologi atau dokter paru.
+        Keputusan terapi wajib dikonfirmasi melalui evaluasi klinis dan biopsi histopatologi.
+    </div>
+    """,
+    unsafe_allow_html=True
+)

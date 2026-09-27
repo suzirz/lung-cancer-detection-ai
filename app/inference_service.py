@@ -22,6 +22,7 @@ from src.models.cnn_extractor import build_model, LungCNNModel
 from src.explainability.gradcam import GradCAM, overlay_heatmap
 from src.preprocessing.dataset import get_transforms
 from src.dicom.processor import load_dicom_slice, create_dicom_secondary_capture, DicomSlice
+from src.evaluation.uncertainty import evaluate_diagnostic_certainty, UncertaintyResult
 
 
 CLASS_NAMES = ["Benign", "Malignant", "Normal"]
@@ -30,7 +31,7 @@ DEFAULT_MODEL_PATH = "models/baseline_efficientnet_b0_best.pth"
 
 @dataclass
 class PredictionResult:
-    """Hasil inferensi lengkap beserta atensi diagnostik Grad-CAM."""
+    """Hasil inferensi lengkap beserta atensi diagnostik Grad-CAM dan kalibrasi kepastian klinis."""
     class_name: str
     class_idx: int
     confidence: float
@@ -38,6 +39,7 @@ class PredictionResult:
     heatmap: np.ndarray
     overlay_image: Image.Image
     latency_ms: float
+    uncertainty: Optional[UncertaintyResult] = None
 
 
 @dataclass
@@ -143,6 +145,8 @@ class InferenceService:
 
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
+        uncertainty = evaluate_diagnostic_certainty(probabilities_dict)
+
         return PredictionResult(
             class_name=pred_class,
             class_idx=pred_idx,
@@ -150,7 +154,8 @@ class InferenceService:
             probabilities=probabilities_dict,
             heatmap=heatmap,
             overlay_image=overlay_img,
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            uncertainty=uncertainty
         )
 
     def predict_dicom(
@@ -194,6 +199,7 @@ class InferenceService:
             heatmap=base_result.heatmap,
             overlay_image=base_result.overlay_image,
             latency_ms=base_result.latency_ms,
+            uncertainty=base_result.uncertainty,
             metadata=dcm_slice.metadata,
             hu_min=hu_min,
             hu_max=hu_max,

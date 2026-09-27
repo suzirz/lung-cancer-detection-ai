@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Tests](https://img.shields.io/badge/Tests-33%20Passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/Tests-41%20Passing-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)
 
 > [!WARNING]
