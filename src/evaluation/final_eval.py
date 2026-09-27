@@ -156,18 +156,37 @@ def main():
     print(f" - Mean Macro Recall : {cv_results['mean_recall_macro']*100:.2f}% ± {cv_results['std_recall_macro']*100:.2f}%")
     print(f" - Mean Macro F1     : {cv_results['mean_f1_macro']*100:.2f}% ± {cv_results['std_f1_macro']*100:.2f}%")
 
-    # Generate Multi-Class ROC-AUC curve jika data test dan model hybrid tersedia
+    # Evaluasi pada data Test Set Murni (Unseen Data)
     X_test = data.get("X_test", None)
     y_test = data.get("y_test", None)
     rf_model_path = "models/hybrid_random_forest.joblib"
-    if X_test is not None and y_test is not None and os.path.exists(rf_model_path):
-        import joblib
-        print("[*] Menghitung Multi-Class ROC-AUC pada test set murni...")
-        rf_model = joblib.load(rf_model_path)
-        class_names = ["Benign cases", "Malignant cases", "Normal cases"]
-        y_probs = rf_model.predict_proba(X_test)
-        roc_results = compute_roc_auc_multiclass(y_test, y_probs, class_names, output_path="reports/roc_auc_curve.png")
-        print(f"[OK] Kurva ROC-AUC disimpan ke: reports/roc_auc_curve.png (Macro AUC: {roc_results.get('macro_auc', 0.0):.4f})")
+
+    if X_test is not None and y_test is not None:
+        # Cross-validation pada Unseen Test Embeddings untuk validasi stabilitas pasien baru
+        test_split_path = "data/splits/test_split.json"
+        if os.path.exists(test_split_path):
+            from src.preprocessing.dataset import extract_group_id
+            with open(test_split_path, "r", encoding="utf-8") as f:
+                test_samples = json.load(f)
+            if len(test_samples) == len(y_test):
+                test_groups = [extract_group_id(p[0]) for p in test_samples]
+                print(f"\n[+] Menjalankan 5-Fold Group CV pada Unseen Test Set ({len(set(test_groups))} pasien independen)...")
+                test_cv = run_cross_validation_audit(X_test, y_test, groups=test_groups, n_splits=5)
+                print(f" - Unseen Test Mean Accuracy : {test_cv['mean_accuracy']*100:.2f}% ± {test_cv['std_accuracy']*100:.2f}%")
+                print(f" - Unseen Test Macro Recall  : {test_cv['mean_recall_macro']*100:.2f}% ± {test_cv['std_recall_macro']*100:.2f}%")
+                cv_results["unseen_test_cv"] = test_cv
+                with open(out_cv_path, "w", encoding="utf-8") as f:
+                    json.dump(cv_results, f, indent=2)
+
+        # Generate Multi-Class ROC-AUC curve jika model hybrid tersedia
+        if os.path.exists(rf_model_path):
+            import joblib
+            print("\n[*] Menghitung Multi-Class ROC-AUC pada test set murni...")
+            rf_model = joblib.load(rf_model_path)
+            class_names = ["Benign cases", "Malignant cases", "Normal cases"]
+            y_probs = rf_model.predict_proba(X_test)
+            roc_results = compute_roc_auc_multiclass(y_test, y_probs, class_names, output_path="reports/roc_auc_curve.png")
+            print(f"[OK] Kurva ROC-AUC disimpan ke: reports/roc_auc_curve.png (Macro AUC: {roc_results.get('macro_auc', 0.0):.4f})")
 
 
 if __name__ == "__main__":
