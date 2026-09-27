@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.inference_service import InferenceService, PredictionResult, CLASS_NAMES
+from app.inference_service import InferenceService, PredictionResult, DicomPredictionResult, CLASS_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -184,11 +184,12 @@ with st.sidebar:
 
     input_mode = st.radio(
         "Pilih Sumber Citra:",
-        options=["🧪 Contoh Klinis Tersimpan", "📤 Unggah Citra Mandiri"],
+        options=["🧪 Contoh Klinis Tersimpan", "📤 Unggah Citra (PNG/JPG)", "🏥 Berkas Medis DICOM (.dcm)"],
         index=0,
     )
 
     selected_image = None
+    selected_dicom_bytes = None
     image_title = ""
 
     if input_mode == "🧪 Contoh Klinis Tersimpan":
@@ -216,7 +217,7 @@ with st.sidebar:
         else:
             st.error(f"File sampel tidak ditemukan di {sample_path}")
 
-    else:
+    elif input_mode == "📤 Unggah Citra (PNG/JPG)":
         uploaded_file = st.file_uploader(
             "Pilih berkas CT Scan (PNG/JPG):",
             type=["png", "jpg", "jpeg"],
@@ -225,6 +226,16 @@ with st.sidebar:
         if uploaded_file is not None:
             selected_image = Image.open(uploaded_file)
             image_title = uploaded_file.name
+
+    else:
+        uploaded_dcm = st.file_uploader(
+            "Pilih berkas DICOM CT Scan (.dcm):",
+            type=["dcm", "dicom"],
+            help="Unggah irisan CT scan 16-bit asli untuk kalibrasi Hounsfield Units & Lung Windowing (-600 HU)",
+        )
+        if uploaded_dcm is not None:
+            selected_dicom_bytes = uploaded_dcm.read()
+            image_title = uploaded_dcm.name
 
     st.markdown("---")
     st.markdown("#### 🎨 Pengaturan Grad-CAM")
@@ -286,8 +297,8 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Processing & Display Pipeline
 # ---------------------------------------------------------------------------
-if selected_image is None:
-    st.info("👈 Silakan pilih contoh klinis di sidebar atau unggah citra CT scan untuk memulai analisis.")
+if selected_image is None and selected_dicom_bytes is None:
+    st.info("👈 Silakan pilih contoh klinis di sidebar atau unggah citra CT scan (PNG/JPG/DICOM) untuk memulai analisis.")
 else:
     try:
         service = get_service()
@@ -295,22 +306,39 @@ else:
         st.error(f"Gagal memuat model: {e}")
         st.stop()
 
+    is_dicom = selected_dicom_bytes is not None
+
     # Jalankan inferensi & Grad-CAM
     with st.spinner("Menganalisis fitur spasial CT scan & menghasilkan peta atensi Grad-CAM..."):
-        result: PredictionResult = service.predict(
-            selected_image,
-            alpha=cam_alpha,
-            colormap=cam_colormap,
-        )
+        if is_dicom:
+            result: DicomPredictionResult = service.predict_dicom(
+                selected_dicom_bytes,
+                alpha=cam_alpha,
+                colormap=cam_colormap,
+            )
+            # Dapatkan citra input dari hasil windowing
+            from src.dicom.processor import load_dicom_slice
+            dcm_slice = load_dicom_slice(selected_dicom_bytes)
+            display_input_image = dcm_slice.windowed_image
+        else:
+            result: PredictionResult = service.predict(
+                selected_image,
+                alpha=cam_alpha,
+                colormap=cam_colormap,
+            )
+            display_input_image = selected_image
 
     # 1. Grid Visualisasi: Citra Asli vs Grad-CAM
     col_orig, col_cam = st.columns(2)
 
     with col_orig:
+        caption_text = f"Input: {image_title} ({display_input_image.size[0]}x{display_input_image.size[1]} px)"
+        if is_dicom:
+            caption_text += " [DICOM Standard Lung Window: -600 HU / 1500 W]"
         st.markdown("#### 📷 Citra CT Scan Asli")
         st.image(
-            selected_image,
-            caption=f"Input: {image_title} ({selected_image.size[0]}x{selected_image.size[1]} px)",
+            display_input_image,
+            caption=caption_text,
             use_container_width=True,
         )
 
@@ -320,6 +348,23 @@ else:
             result.overlay_image,
             caption=f"Area Atensi Diagnostik Tertinggi (Fokus Fitur Lapisan Konvolusi Terakhir)",
             use_container_width=True,
+        )
+
+    # Panel Khusus DICOM Metadata jika berkas medis asli diunggah
+    if is_dicom and isinstance(result, DicomPredictionResult):
+        st.markdown(
+            f"""
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 14px 18px; margin: 16px 0;">
+                <h4 style="margin: 0 0 8px 0; color: #38bdf8; font-size: 15px;">🏥 Informasi Radiologi & Hounsfield Units (DICOM Medis)</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size: 13px; color: #cbd5e1;">
+                    <div><strong>Patient ID:</strong> {result.metadata.get('patient_id', 'N/A')}</div>
+                    <div><strong>Slice Thickness:</strong> {result.metadata.get('slice_thickness_mm', 1.0)} mm</div>
+                    <div><strong>KVP:</strong> {result.metadata.get('kvp', 120.0)} kV</div>
+                    <div><strong>HU Range:</strong> {result.hu_min:.0f} s.d. {result.hu_max:.0f} HU (Mean: {result.hu_mean:.0f})</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
     # 2. Status Diagnosis Card
@@ -416,6 +461,21 @@ else:
             st.markdown(f"**{cls}**")
         with col_bar:
             st.progress(float(prob), text=f"{prob * 100:.2f}%")
+
+    # Fitur Ekspor DICOM Secondary Capture untuk PACS
+    if is_dicom and isinstance(result, DicomPredictionResult) and result.secondary_capture_dcm is not None:
+        import io
+        st.markdown("---")
+        st.markdown("#### 💾 Ekspor Hasil Analisis ke Format Standar Medis (PACS Ready)")
+        sc_buffer = io.BytesIO()
+        result.secondary_capture_dcm.save_as(sc_buffer, enforce_file_format=True)
+        st.download_button(
+            label="📥 Unduh DICOM Secondary Capture (.dcm) dengan Peta Atensi Grad-CAM",
+            data=sc_buffer.getvalue(),
+            file_name=f"pulmoscan_secondary_capture_{result.class_name.lower()}.dcm",
+            mime="application/dicom",
+            help="Unduh file DICOM standar untuk diimpor ke sistem PACS RS (Horos, Radiant, GE Centricity)",
+        )
 
     # 5. Penjelasan Klinis & Disclaimer
     st.markdown(

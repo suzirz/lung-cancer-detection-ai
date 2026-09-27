@@ -12,7 +12,7 @@ Prinsip Codebase Design:
 import os
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union, Any
 import numpy as np
 from PIL import Image
 import torch
@@ -21,6 +21,7 @@ import torch.nn.functional as F
 from src.models.cnn_extractor import build_model, LungCNNModel
 from src.explainability.gradcam import GradCAM, overlay_heatmap
 from src.preprocessing.dataset import get_transforms
+from src.dicom.processor import load_dicom_slice, create_dicom_secondary_capture, DicomSlice
 
 
 CLASS_NAMES = ["Benign", "Malignant", "Normal"]
@@ -37,6 +38,16 @@ class PredictionResult:
     heatmap: np.ndarray
     overlay_image: Image.Image
     latency_ms: float
+
+
+@dataclass
+class DicomPredictionResult(PredictionResult):
+    """Hasil inferensi berkas DICOM beserta metadata klinis dan secondary capture dataset."""
+    metadata: Dict[str, Any] = None
+    hu_min: float = 0.0
+    hu_max: float = 0.0
+    hu_mean: float = 0.0
+    secondary_capture_dcm: Any = None
 
 
 class InferenceService:
@@ -141,3 +152,52 @@ class InferenceService:
             overlay_image=overlay_img,
             latency_ms=latency_ms
         )
+
+    def predict_dicom(
+        self,
+        dicom_source: Union[str, bytes],
+        alpha: float = 0.45,
+        colormap: str = "jet"
+    ) -> DicomPredictionResult:
+        """
+        Menjalankan diagnosis pada berkas DICOM asli, mengekstrak Hounsfield Units,
+        dan membuat Secondary Capture DICOM untuk integrasi PACS.
+        """
+        # 1. Parse berkas DICOM dan terapkan Standard Lung Windowing (-600 HU / 1500 HU)
+        dcm_slice: DicomSlice = load_dicom_slice(dicom_source)
+
+        # 2. Jalankan inferensi dasar menggunakan citra hasil windowing
+        base_result = self.predict(
+            image=dcm_slice.windowed_image,
+            alpha=alpha,
+            colormap=colormap
+        )
+
+        # 3. Hitung statistik Hounsfield Unit
+        hu_min = float(np.min(dcm_slice.hu_array))
+        hu_max = float(np.max(dcm_slice.hu_array))
+        hu_mean = float(np.mean(dcm_slice.hu_array))
+
+        # 4. Buat objek DICOM Secondary Capture
+        secondary_dcm = create_dicom_secondary_capture(
+            original_dcm=dcm_slice.raw_dataset,
+            overlay_image=base_result.overlay_image,
+            findings_text=base_result.class_name,
+            confidence=base_result.confidence
+        )
+
+        return DicomPredictionResult(
+            class_name=base_result.class_name,
+            class_idx=base_result.class_idx,
+            confidence=base_result.confidence,
+            probabilities=base_result.probabilities,
+            heatmap=base_result.heatmap,
+            overlay_image=base_result.overlay_image,
+            latency_ms=base_result.latency_ms,
+            metadata=dcm_slice.metadata,
+            hu_min=hu_min,
+            hu_max=hu_max,
+            hu_mean=hu_mean,
+            secondary_capture_dcm=secondary_dcm
+        )
+
